@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>團隊待辦清單 - 線上多人協作系統</title>
+  <meta name="description" content="專為團隊打造的現代化線上協作 Todo List 系統，具備 Email 白名單驗證、即時同步、分類指派與多維度排序功能。">
+  
+  <!-- Google Fonts: Noto Sans TC & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Supabase JS SDK (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <!-- 樣式表 -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 應用程式主容器 -->
+  <div id="app" class="app-layout">
+    
+    <!-- 1. 頂部導航列 -->
+    <header class="top-navbar" id="top-navbar">
+      <div class="navbar-brand">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <h1 class="brand-title">團隊待辦清單</h1>
+        <span class="badge-status-mode" id="status-mode-badge" title="點擊檢視連線狀態">本地測試模式</span>
+      </div>
+
+      <div class="navbar-user-actions" id="navbar-user-actions">
+        <!-- 未登入狀態 -->
+        <div id="logged-out-view" class="user-action-group">
+          <button type="button" class="btn btn-primary btn-sm" id="btn-open-login">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+            登入系統
+          </button>
+        </div>
+
+        <!-- 已登入狀態 -->
+        <div id="logged-in-view" class="user-action-group hidden">
+          <div class="user-profile-chip" id="user-profile-chip">
+            <div class="user-avatar" id="user-avatar-badge">我</div>
+            <div class="user-text-info">
+              <span class="user-name" id="user-display-name">載入中...</span>
+              <span class="user-email" id="user-email-text">user@example.com</span>
+            </div>
+          </div>
+
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-open-edit-nickname" title="修改顯示暱稱">
+            修改暱稱
+          </button>
+          
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-open-whitelist" title="管理白名單成員">
+            成員管理
+          </button>
+
+          <button type="button" class="btn btn-icon btn-sm" id="btn-open-cloud-config" title="雲端資料庫設定 (Supabase)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+
+          <button type="button" class="btn btn-outline-danger btn-sm" id="btn-logout" title="登出當前帳號">
+            登出
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- 2. 主體區域 (側邊欄 + 主畫面) -->
+    <div class="main-container">
+      
+      <!-- 左側側邊欄 -->
+      <aside class="sidebar" id="sidebar">
+        <!-- 類別區塊 -->
+        <div class="sidebar-section">
+          <div class="sidebar-header">
+            <span class="section-title">分類類別</span>
+            <button type="button" class="btn-text-action" id="btn-add-category" title="新增自訂分類">＋ 新增</button>
+          </div>
+          <ul class="category-list" id="category-filter-list">
+            <!-- 動態渲染類別標籤項目 -->
+          </ul>
+        </div>
+
+        <!-- 狀態篩選區塊 -->
+        <div class="sidebar-section">
+          <span class="section-title">任務篩選</span>
+          <div class="filter-tabs" id="filter-tabs">
+            <button type="button" class="filter-tab active" data-filter="all" id="filter-all">全部任務 <span class="badge" id="count-all">0</span></button>
+            <button type="button" class="filter-tab" data-filter="active" id="filter-active">進行中 <span class="badge" id="count-active">0</span></button>
+            <button type="button" class="filter-tab" data-filter="completed" id="filter-completed">已完成 <span class="badge" id="count-completed">0</span></button>
+          </div>
+        </div>
+
+        <!-- 隱藏已完成開關 -->
+        <div class="sidebar-section">
+          <div class="toggle-control-row">
+            <label for="toggle-hide-completed" class="toggle-label">
+              <span>隱藏已完成事項</span>
+              <span class="toggle-hint">專注未完成項目</span>
+            </label>
+            <label class="switch">
+              <input type="checkbox" id="toggle-hide-completed">
+              <span class="slider round"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 排序方式選單 -->
+        <div class="sidebar-section">
+          <span class="section-title">排序方式</span>
+          <div class="select-wrapper">
+            <select id="select-sort-by" class="form-select">
+              <option value="created_desc">建立日期（新 $\rightarrow$ 舊）</option>
+              <option value="created_asc">建立日期（舊 $\rightarrow$ 新）</option>
+              <option value="due_asc">截止時間（近期優先）</option>
+              <option value="category">任務類別</option>
+              <option value="assignee">負責人</option>
+            </select>
+          </div>
+        </div>
+      </aside>
+
+      <!-- 主要內容區 -->
+      <main class="content-area" id="content-area">
+        
+        <!-- 快速新增待辦事項列 -->
+        <section class="quick-add-card" id="quick-add-card">
+          <form id="form-create-todo" class="quick-add-form">
+            <div class="form-row-main">
+              <input 
+                type="text" 
+                id="input-todo-title" 
+                class="form-input input-title" 
+                placeholder="新增待辦事項...（例如：繳交第三季專案報告）" 
+                required 
+                autocomplete="off"
+              >
+            </div>
+            
+            <div class="form-row-options">
+              <div class="option-item">
+                <label for="select-todo-category" class="sr-only">選擇分類</label>
+                <select id="select-todo-category" class="form-select select-compact">
+                  <option value="">選擇分類...</option>
+                </select>
+              </div>
+
+              <div class="option-item">
+                <label for="select-todo-assignee" class="sr-only">指派負責人</label>
+                <select id="select-todo-assignee" class="form-select select-compact">
+                  <option value="">指派負責人...</option>
+                </select>
+              </div>
+
+              <div class="option-item">
+                <label for="input-todo-due" class="sr-only">截止時間</label>
+                <input type="datetime-local" id="input-todo-due" class="form-input input-compact input-date">
+              </div>
+
+              <button type="submit" class="btn btn-primary" id="btn-submit-todo">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                新增任務
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <!-- 任務列表狀態提示與搜尋 -->
+        <div class="list-header-bar">
+          <div class="list-stats-info">
+            <span class="active-category-label" id="current-category-indicator">所有分類</span>
+            <span class="task-count-summary" id="task-summary-text">共有 0 項任務</span>
+          </div>
+
+          <div class="search-box">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="text" id="input-search-tasks" placeholder="搜尋任務名稱或負責人..." class="search-input">
+          </div>
+        </div>
+
+        <!-- 待辦事項清單列表容器 -->
+        <div class="todo-list-container" id="todo-list-container">
+          <!-- 動態渲染待辦卡片 -->
+        </div>
+
+        <!-- 查無資料空狀態 -->
+        <div class="empty-state hidden" id="empty-state">
+          <div class="empty-icon">📝</div>
+          <h2 class="empty-title">目前沒有待辦事項</h2>
+          <p class="empty-desc">點擊上方輸入框新增一筆任務，或切換左側篩選條件！</p>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- ================= 彈出視窗 (Modals) ================= -->
+
+  <!-- 1. Email 登入視窗 -->
+  <div class="modal-backdrop hidden" id="modal-login">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">登入團隊系統</h2>
+      </div>
+      <div class="modal-body">
+        <p class="modal-tip">請輸入已獲授權的團隊成員 Email。系統將自動驗證白名單權限。</p>
+        <form id="form-login">
+          <div class="form-group">
+            <label for="input-login-email" class="form-label">電子郵件 (Email)</label>
+            <input type="email" id="input-login-email" class="form-input" placeholder="name@example.com" required>
+          </div>
+          
+          <!-- 快捷測試帳號按鈕 -->
+          <div class="quick-demo-accounts">
+            <span class="quick-label">快速測試帳號：</span>
+            <div class="quick-chips">
+              <button type="button" class="btn-chip" data-email="chaohsuan.ke@gmail.com">系統管理員 (chaohsuan.ke@gmail.com)</button>
+              <button type="button" class="btn-chip" data-email="sarah@example.com">陳小華 (sarah@example.com)</button>
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="submit" class="btn btn-primary btn-block" id="btn-submit-login">確認登入</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. 修改顯示暱稱視窗 -->
+  <div class="modal-backdrop hidden" id="modal-edit-nickname">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">修改個人暱稱</h2>
+        <button type="button" class="modal-close" data-close="modal-edit-nickname">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-edit-nickname">
+          <div class="form-group">
+            <label for="input-new-nickname" class="form-label">新的顯示暱稱 (Display Name)</label>
+            <input type="text" id="input-new-nickname" class="form-input" placeholder="請輸入您的暱稱或姓名" required maxlength="30">
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close="modal-edit-nickname">取消</button>
+            <button type="submit" class="btn btn-primary" id="btn-save-nickname">儲存暱稱</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. 新增/管理分類標籤視窗 -->
+  <div class="modal-backdrop hidden" id="modal-category-manager">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">新增分類類別</h2>
+        <button type="button" class="modal-close" data-close="modal-category-manager">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-create-category">
+          <div class="form-group">
+            <label for="input-category-name" class="form-label">分類名稱</label>
+            <input type="text" id="input-category-name" class="form-input" placeholder="例如：產品設計、行銷推廣" required maxlength="20">
+          </div>
+          <div class="form-group">
+            <label class="form-label">標籤色彩</label>
+            <div class="color-palette-options" id="color-palette-options">
+              <label class="color-radio"><input type="radio" name="cat-color" value="#3b82f6" checked><span style="background:#3b82f6;"></span></label>
+              <label class="color-radio"><input type="radio" name="cat-color" value="#10b981"><span style="background:#10b981;"></span></label>
+              <label class="color-radio"><input type="radio" name="cat-color" value="#ef4444"><span style="background:#ef4444;"></span></label>
+              <label class="color-radio"><input type="radio" name="cat-color" value="#f59e0b"><span style="background:#f59e0b;"></span></label>
+              <label class="color-radio"><input type="radio" name="cat-color" value="#8b5cf6"><span style="background:#8b5cf6;"></span></label>
+              <label class="color-radio"><input type="radio" name="cat-color" value="#ec4899"><span style="background:#ec4899;"></span></label>
+              <label class="color-radio"><input type="radio" name="cat-color" value="#06b6d4"><span style="background:#06b6d4;"></span></label>
+              <label class="color-radio"><input type="radio" name="cat-color" value="#64748b"><span style="background:#64748b;"></span></label>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close="modal-category-manager">取消</button>
+            <button type="submit" class="btn btn-primary" id="btn-save-category">建立分類</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. 白名單成員管理視窗 (Admin 權限) -->
+  <div class="modal-backdrop hidden" id="modal-whitelist-manager">
+    <div class="modal-card modal-large">
+      <div class="modal-header">
+        <h2 class="modal-title">團隊成員白名單管理</h2>
+        <button type="button" class="modal-close" data-close="modal-whitelist-manager">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- 新增成員表單 -->
+        <form id="form-add-whitelist" class="inline-add-form">
+          <input type="email" id="input-new-member-email" class="form-input" placeholder="成員 Email (例如 user@domain.com)" required>
+          <input type="text" id="input-new-member-name" class="form-input" placeholder="預設暱稱 (例如 李經理)" required>
+          <select id="select-new-member-role" class="form-select">
+            <option value="member">一般成員</option>
+            <option value="admin">管理者</option>
+          </select>
+          <button type="submit" class="btn btn-primary" id="btn-submit-new-member">＋ 新增成員</button>
+        </form>
+
+        <!-- 現有白名單清單 -->
+        <div class="whitelist-table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>顯示暱稱</th>
+                <th>權限角色</th>
+                <th style="text-align: right;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="whitelist-table-body">
+              <!-- 動態生成白名單項目 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 雲端資料庫 (Supabase) 設定視窗 -->
+  <div class="modal-backdrop hidden" id="modal-cloud-config">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">Supabase 雲端即時同步設定</h2>
+        <button type="button" class="modal-close" data-close="modal-cloud-config">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-tip">填入您在 Supabase 建立的 Project URL 與 Public Anon Key，即可無縫啟動多人即時同步。留空則維持本地測試模式。</p>
+        <form id="form-cloud-config">
+          <div class="form-group">
+            <label for="input-supabase-url" class="form-label">Supabase Project URL</label>
+            <input type="url" id="input-supabase-url" class="form-input" placeholder="https://xxxxxxxxxxxx.supabase.co">
+          </div>
+          <div class="form-group">
+            <label for="input-supabase-key" class="form-label">Supabase Anon Public Key</label>
+            <input type="text" id="input-supabase-key" class="form-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="btn-reset-to-local">重設為本地模式</button>
+            <button type="submit" class="btn btn-primary" id="btn-save-cloud-config">儲存並連接</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 訊息通知容器 -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- 應用程式主邏輯 -->
+  <script src="app.js"></script>
+</body>
+</html>

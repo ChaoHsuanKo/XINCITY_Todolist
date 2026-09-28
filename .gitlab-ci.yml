@@ -1,0 +1,17 @@
+# ==========================================
+# GitLab CI/CD 配置檔 - 發布到 GitLab Pages
+# ==========================================
+
+image: alpine:latest
+
+pages:
+  stage: deploy
+  script:
+    - mkdir -p public
+    - cp -r index.html style.css app.js wireframe.jpg public/ 2>/dev/null || cp index.html style.css app.js public/
+  artifacts:
+    paths:
+      - public
+  only:
+    - main
+    - master
