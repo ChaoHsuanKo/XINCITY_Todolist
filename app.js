@@ -794,15 +794,6 @@ function bindEvents() {
     }
   });
 
-  // 快捷測試帳號點擊
-  document.querySelectorAll('.btn-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const email = chip.getAttribute('data-email');
-      DOM.inputLoginEmail.value = email;
-      handleLogin(email);
-    });
-  });
-
   // 登出按鈕
   DOM.btnLogout.addEventListener('click', handleLogout);
   DOM.btnOpenLogin.addEventListener('click', () => openModal('modal-login'));
