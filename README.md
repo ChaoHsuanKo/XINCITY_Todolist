@@ -22,25 +22,18 @@
 
 ---
 
-## 🚀 明天繼續時的下一步（發布到 GitLab Pages）
+## 🚀 正式發布到 GitHub Pages
 
-明天只要執行以下步驟，即可正式獲得對外公開網址：
-
-1. **在 GitLab 上建立空白專案**：
-   - 開啟 [GitLab.com](https://gitlab.com)，點擊 **New project** $\rightarrow$ **Create blank project**。
-   - 專案名稱填寫 `todolist`，可見性建議選擇 **Public**（若希望免登入直接開網頁）。
-   - **不要**勾選 *Initialize repository with a README*。
-2. **將本地程式碼推送到 GitLab**：
-   - 取得 GitLab 專案網址（例如：`https://gitlab.com/<帳號>/todolist.git`）。
-   - 在專案目錄終端機執行（或直接把網址貼給我，我幫您跑）：
+1. **推送本地程式碼至 GitHub**：
+   - 遠端倉庫已設定：`https://github.com/ChaoHsuanKo/XINCITY_Todolist.git`
+   - 在終端機執行推播：
      ```bash
-     git remote add origin <您的 GitLab 專案網址.git>
-     git branch -M main
      git push -u origin main
      ```
-3. **自動完成上線**：
-   - 專案內已包含 `.gitlab-ci.yml`，推送後 GitLab 會自動執行部屬。
-   - 約 1 分鐘後即可在 GitLab 的 **Deploy** $\rightarrow$ **Pages** 看到正式上線網址（例如：`https://<帳號>.gitlab.io/todolist`）！
+2. **自動部署與啟用 GitHub Pages**：
+   - 專案內已包含 `.github/workflows/pages.yml`，推送後 GitHub Actions 會自動完成打包與部署。
+   - 在 GitHub 倉庫的 **Settings** $\rightarrow$ **Pages**，將 **Source** 選為 **GitHub Actions**（若尚未自動切換）。
+   - 部署完成後即可在 `https://chaohsuanko.github.io/XINCITY_Todolist/` 正式瀏覽線上系統！
 
 ---
 
