@@ -14,8 +14,8 @@
   <!-- Supabase JS SDK (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
-  <!-- 樣式表 -->
-  <link rel="stylesheet" href="style.css">
+  <!-- 樣式表 (含防快取版本號) -->
+  <link rel="stylesheet" href="style.css?v=20261001_02">
 </head>
 <body>
   <!-- 應用程式主容器 -->
@@ -83,7 +83,7 @@
         <div class="sidebar-section">
           <div class="sidebar-header">
             <span class="section-title">分類類別</span>
-            <button type="button" class="btn-text-action" id="btn-add-category" title="新增自訂分類">＋ 新增</button>
+            <button type="button" class="btn-text-action" id="btn-add-category" onclick="openAddCategoryModal()" title="新增自訂分類">＋ 新增</button>
           </div>
           <ul class="category-list" id="category-filter-list">
             <!-- 動態渲染類別標籤項目 -->
@@ -247,7 +247,7 @@
     </div>
   </div>
 
-  <!-- 3. 新增/管理分類標籤視窗 -->
+  <!-- 3. 新增分類標籤視窗 -->
   <div class="modal-backdrop hidden" id="modal-category-manager">
     <div class="modal-card">
       <div class="modal-header">
@@ -255,7 +255,7 @@
         <button type="button" class="modal-close" data-close="modal-category-manager">&times;</button>
       </div>
       <div class="modal-body">
-        <form id="form-create-category">
+        <form id="form-create-category" onsubmit="handleCreateCategorySubmit(event)">
           <div class="form-group">
             <label for="input-category-name" class="form-label">分類名稱</label>
             <input type="text" id="input-category-name" class="form-input" placeholder="例如：產品設計、行銷推廣" required maxlength="20">
@@ -274,8 +274,47 @@
             </div>
           </div>
           <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" data-close="modal-category-manager">取消</button>
+            <button type="button" class="btn btn-secondary" onclick="closeModal('modal-category-manager')">取消</button>
             <button type="submit" class="btn btn-primary" id="btn-save-category">建立分類</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3-1. 修改分類類別視窗 (僅限管理者) -->
+  <div class="modal-backdrop hidden" id="modal-edit-category">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">修改分類類別</h2>
+        <button type="button" class="modal-close" data-close="modal-edit-category">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-edit-category" onsubmit="handleEditCategorySubmit(event)">
+          <input type="hidden" id="input-edit-category-id">
+          <div class="form-group">
+            <label for="input-edit-category-name" class="form-label">分類名稱</label>
+            <input type="text" id="input-edit-category-name" class="form-input" placeholder="例如：產品設計、行銷推廣" required maxlength="20">
+          </div>
+          <div class="form-group">
+            <label class="form-label">標籤色彩</label>
+            <div class="color-palette-options" id="edit-color-palette-options">
+              <label class="color-radio"><input type="radio" name="edit-cat-color" value="#3b82f6"><span style="background:#3b82f6;"></span></label>
+              <label class="color-radio"><input type="radio" name="edit-cat-color" value="#10b981"><span style="background:#10b981;"></span></label>
+              <label class="color-radio"><input type="radio" name="edit-cat-color" value="#ef4444"><span style="background:#ef4444;"></span></label>
+              <label class="color-radio"><input type="radio" name="edit-cat-color" value="#f59e0b"><span style="background:#f59e0b;"></span></label>
+              <label class="color-radio"><input type="radio" name="edit-cat-color" value="#8b5cf6"><span style="background:#8b5cf6;"></span></label>
+              <label class="color-radio"><input type="radio" name="edit-cat-color" value="#ec4899"><span style="background:#ec4899;"></span></label>
+              <label class="color-radio"><input type="radio" name="edit-cat-color" value="#06b6d4"><span style="background:#06b6d4;"></span></label>
+              <label class="color-radio"><input type="radio" name="edit-cat-color" value="#64748b"><span style="background:#64748b;"></span></label>
+            </div>
+          </div>
+          <div class="modal-actions modal-actions-between">
+            <button type="button" class="btn btn-outline-danger" id="btn-delete-category" onclick="handleDeleteCategoryClick()">刪除此分類</button>
+            <div style="display:flex; gap:0.5rem;">
+              <button type="button" class="btn btn-secondary" onclick="closeModal('modal-edit-category')">取消</button>
+              <button type="submit" class="btn btn-primary" id="btn-save-edit-category">儲存變更</button>
+            </div>
           </div>
         </form>
       </div>
@@ -351,7 +390,7 @@
   <!-- Toast 訊息通知容器 -->
   <div class="toast-container" id="toast-container"></div>
 
-  <!-- 應用程式主邏輯 -->
-  <script src="app.js"></script>
+  <!-- 應用程式主邏輯 (含防快取版本號) -->
+  <script src="app.js?v=20261001_02"></script>
 </body>
 </html>

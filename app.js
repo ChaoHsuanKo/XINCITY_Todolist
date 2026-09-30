@@ -148,6 +148,12 @@ const DOM = {
   formCreateCategory: document.getElementById('form-create-category'),
   inputCategoryName: document.getElementById('input-category-name'),
 
+  modalEditCategory: document.getElementById('modal-edit-category'),
+  formEditCategory: document.getElementById('form-edit-category'),
+  inputEditCategoryId: document.getElementById('input-edit-category-id'),
+  inputEditCategoryName: document.getElementById('input-edit-category-name'),
+  btnDeleteCategory: document.getElementById('btn-delete-category'),
+
   modalWhitelistManager: document.getElementById('modal-whitelist-manager'),
   formAddWhitelist: document.getElementById('form-add-whitelist'),
   inputNewMemberEmail: document.getElementById('input-new-member-email'),
@@ -361,8 +367,14 @@ const DataService = {
         .from('categories')
         .insert([{ name, color }])
         .select();
-      if (error) throw error;
-      return data[0];
+      if (error) {
+        console.error('Supabase 新增分類失敗:', error);
+        throw error;
+      }
+      if (data && data[0]) {
+        appState.categories.push(data[0]);
+      }
+      return data ? data[0] : null;
     } else {
       const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY));
       const newCat = { id: 'c_' + Date.now(), name, color };
@@ -370,6 +382,79 @@ const DataService = {
       localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(local));
       appState.categories = local.categories;
       return newCat;
+    }
+  },
+
+  // 修改分類 (僅限管理者)
+  async updateCategory(categoryId, name, color) {
+    if (!appState.currentUser || appState.currentUser.role !== 'admin') {
+      throw new Error('只有系統管理者可以修改分類！');
+    }
+
+    if (appState.isCloudMode) {
+      const { data, error } = await appState.supabaseClient
+        .from('categories')
+        .update({ name, color })
+        .eq('id', categoryId)
+        .select();
+      if (error) {
+        console.error('Supabase 修改分類失敗:', error);
+        throw error;
+      }
+      const idx = appState.categories.findIndex(c => c.id === categoryId);
+      if (idx !== -1 && data && data[0]) {
+        appState.categories[idx] = data[0];
+      }
+      return data ? data[0] : null;
+    } else {
+      const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY));
+      const cat = local.categories.find(c => c.id === categoryId);
+      if (cat) {
+        cat.name = name;
+        cat.color = color;
+        localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(local));
+        appState.categories = local.categories;
+      }
+      return cat;
+    }
+  },
+
+  // 刪除分類 (僅限管理者)
+  async deleteCategory(categoryId) {
+    if (!appState.currentUser || appState.currentUser.role !== 'admin') {
+      throw new Error('只有系統管理者可以刪除分類！');
+    }
+
+    if (appState.isCloudMode) {
+      const { error } = await appState.supabaseClient
+        .from('categories')
+        .delete()
+        .eq('id', categoryId);
+      if (error) {
+        console.error('Supabase 刪除分類失敗:', error);
+        throw error;
+      }
+      appState.categories = appState.categories.filter(c => c.id !== categoryId);
+      appState.todos.forEach(t => {
+        if (t.category_id === categoryId) t.category_id = null;
+      });
+      if (appState.selectedCategory === categoryId) {
+        appState.selectedCategory = 'all';
+        DOM.currentCategoryIndicator.textContent = '所有分類';
+      }
+    } else {
+      const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY));
+      local.categories = local.categories.filter(c => c.id !== categoryId);
+      local.todos.forEach(t => {
+        if (t.category_id === categoryId) t.category_id = null;
+      });
+      localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(local));
+      appState.categories = local.categories;
+      appState.todos = local.todos;
+      if (appState.selectedCategory === categoryId) {
+        appState.selectedCategory = 'all';
+        DOM.currentCategoryIndicator.textContent = '所有分類';
+      }
     }
   },
 
@@ -498,6 +583,9 @@ function renderNavbarAuth(isLoggedIn) {
     DOM.loggedOutView.classList.remove('hidden');
     DOM.loggedInView.classList.add('hidden');
   }
+
+  // 身分切換時重新渲染分類列表 (以顯示/隱藏管理者編輯圖示)
+  renderCategories();
 }
 
 // ==========================================
@@ -508,6 +596,8 @@ function renderNavbarAuth(isLoggedIn) {
 function renderCategories() {
   DOM.categoryFilterList.innerHTML = '';
   DOM.selectTodoCategory.innerHTML = '<option value="">選擇分類...</option>';
+
+  const isAdmin = appState.currentUser && appState.currentUser.role === 'admin';
 
   // 1. 全部類別選項
   const allItem = document.createElement('li');
@@ -537,14 +627,39 @@ function renderCategories() {
         <span class="cat-dot" style="background: ${cat.color};"></span>
         <span>${escapeHtml(cat.name)}</span>
       </div>
-      <span class="cat-count">${count}</span>
+      <div class="cat-right-group">
+        ${isAdmin ? `
+          <button type="button" class="btn-cat-action btn-cat-edit" title="修改分類 (管理者專用)" data-cat-id="${cat.id}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+          </button>
+        ` : ''}
+        <span class="cat-count">${count}</span>
+      </div>
     `;
-    li.addEventListener('click', () => {
+
+    // 點擊分類篩選（若點擊的是編輯按鈕則不觸發篩選切換）
+    li.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-cat-edit')) return;
       appState.selectedCategory = cat.id;
       DOM.currentCategoryIndicator.textContent = cat.name;
       renderCategories();
       renderTodoList();
     });
+
+    // 管理員可點擊編輯按鈕
+    if (isAdmin) {
+      const editBtn = li.querySelector('.btn-cat-edit');
+      if (editBtn) {
+        editBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openEditCategoryModal(cat);
+        });
+      }
+    }
+
     DOM.categoryFilterList.appendChild(li);
 
     // 同步到新增待辦的下拉選單
@@ -553,6 +668,30 @@ function renderCategories() {
     option.textContent = cat.name;
     DOM.selectTodoCategory.appendChild(option);
   });
+}
+
+// 開啟管理者編輯分類彈窗
+function openEditCategoryModal(cat) {
+  if (!appState.currentUser || appState.currentUser.role !== 'admin') {
+    showToast('只有管理者可以修改分類！', 'error');
+    return;
+  }
+  DOM.inputEditCategoryId.value = cat.id;
+  DOM.inputEditCategoryName.value = cat.name;
+
+  const radios = document.querySelectorAll('input[name="edit-cat-color"]');
+  let matched = false;
+  radios.forEach(radio => {
+    if (radio.value.toLowerCase() === (cat.color || '').toLowerCase()) {
+      radio.checked = true;
+      matched = true;
+    }
+  });
+  if (!matched && radios.length > 0) {
+    radios[0].checked = true;
+  }
+
+  openModal('modal-edit-category');
 }
 
 // 更新指派負責人下拉選單
@@ -825,7 +964,14 @@ function bindEvents() {
   });
 
   // 3. 新增分類
-  DOM.btnAddCategory.addEventListener('click', () => openModal('modal-category-manager'));
+  DOM.btnAddCategory.addEventListener('click', () => {
+    if (!appState.currentUser) {
+      showToast('請先登入後再建立分類', 'error');
+      openModal('modal-login');
+      return;
+    }
+    openModal('modal-category-manager');
+  });
 
   DOM.formCreateCategory.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -833,14 +979,96 @@ function bindEvents() {
     const checkedColor = document.querySelector('input[name="cat-color"]:checked')?.value || '#3b82f6';
     if (!name) return;
 
+    const submitBtn = DOM.formCreateCategory.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = '建立中...';
+    }
+
     try {
       await DataService.addCategory(name, checkedColor);
       renderCategories();
+      renderTodoList();
       closeModal('modal-category-manager');
       DOM.formCreateCategory.reset();
-      showToast(`已建立分類「${name}」`, 'success');
+      showToast(`已成功建立分類「${name}」！`, 'success');
     } catch (err) {
-      showToast('建立分類失敗', 'error');
+      console.error('建立分類失敗:', err);
+      showToast(`建立分類失敗: ${err.message || '請確認網路連線'}`, 'error');
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '建立分類';
+      }
+    }
+  });
+
+  // 3-1. 修改分類 (僅限管理者)
+  DOM.formEditCategory.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!appState.currentUser || appState.currentUser.role !== 'admin') {
+      showToast('權限不足：僅有系統管理員可修改分類！', 'error');
+      return;
+    }
+
+    const catId = DOM.inputEditCategoryId.value;
+    const name = DOM.inputEditCategoryName.value.trim();
+    const checkedColor = document.querySelector('input[name="edit-cat-color"]:checked')?.value || '#3b82f6';
+    if (!catId || !name) return;
+
+    const submitBtn = DOM.formEditCategory.querySelector('button[type="submit"]');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = '儲存中...';
+    }
+
+    try {
+      await DataService.updateCategory(catId, name, checkedColor);
+      if (appState.selectedCategory === catId) {
+        DOM.currentCategoryIndicator.textContent = name;
+      }
+      renderCategories();
+      renderTodoList();
+      closeModal('modal-edit-category');
+      showToast(`已成功更新分類「${name}」！`, 'success');
+    } catch (err) {
+      console.error('修改分類失敗:', err);
+      showToast(`修改分類失敗: ${err.message || '請確認網路連線'}`, 'error');
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '儲存變更';
+      }
+    }
+  });
+
+  // 刪除分類 (僅限管理者)
+  DOM.btnDeleteCategory.addEventListener('click', async () => {
+    if (!appState.currentUser || appState.currentUser.role !== 'admin') {
+      showToast('權限不足：僅有系統管理員可刪除分類！', 'error');
+      return;
+    }
+
+    const catId = DOM.inputEditCategoryId.value;
+    const currentCat = appState.categories.find(c => c.id === catId);
+    const catName = currentCat ? currentCat.name : '此分類';
+
+    if (!confirm(`確定要刪除「${catName}」分類嗎？\n刪除後，原本屬於該分類的待辦事項將自動變更為「未分類」。`)) {
+      return;
+    }
+
+    DOM.btnDeleteCategory.disabled = true;
+    try {
+      await DataService.deleteCategory(catId);
+      renderCategories();
+      renderTodoList();
+      closeModal('modal-edit-category');
+      showToast(`已成功刪除分類「${catName}」`, 'success');
+    } catch (err) {
+      console.error('刪除分類失敗:', err);
+      showToast(`刪除分類失敗: ${err.message || '請確認網路連線'}`, 'error');
+    } finally {
+      DOM.btnDeleteCategory.disabled = false;
     }
   });
 
@@ -980,13 +1208,152 @@ function bindEvents() {
 
 function openModal(modalId) {
   const modal = document.getElementById(modalId);
-  if (modal) modal.classList.remove('hidden');
+  if (modal) {
+    modal.classList.remove('hidden');
+    console.log(`[Modal] 已開啟視窗: ${modalId}`);
+  } else {
+    console.warn(`[Modal] 找不到視窗元素: ${modalId}`);
+  }
 }
+window.openModal = openModal;
 
 function closeModal(modalId) {
   const modal = document.getElementById(modalId);
-  if (modal) modal.classList.add('hidden');
+  if (modal) {
+    modal.classList.add('hidden');
+    console.log(`[Modal] 已關閉視窗: ${modalId}`);
+  }
 }
+window.closeModal = closeModal;
+
+// 全域保險函式：開啟新增分類視窗
+window.openAddCategoryModal = function() {
+  console.log('[Category] openAddCategoryModal 被觸發, 當前使用者:', appState.currentUser);
+  if (!appState.currentUser) {
+    showToast('請先輸入 Email 登入團隊系統！', 'error');
+    openModal('modal-login');
+    return;
+  }
+  openModal('modal-category-manager');
+  const input = document.getElementById('input-category-name');
+  if (input) {
+    input.value = '';
+    setTimeout(() => input.focus(), 100);
+  }
+};
+
+// 全域保險函式：送出新增分類
+window.handleCreateCategorySubmit = async function(e) {
+  if (e) e.preventDefault();
+  const nameInput = document.getElementById('input-category-name');
+  const name = nameInput ? nameInput.value.trim() : '';
+  const checkedColor = document.querySelector('input[name="cat-color"]:checked')?.value || '#3b82f6';
+
+  if (!name) {
+    alert('請輸入分類名稱！');
+    return;
+  }
+
+  const submitBtn = document.getElementById('btn-save-category');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = '建立中...';
+  }
+
+  try {
+    const res = await DataService.addCategory(name, checkedColor);
+    console.log('[Category] 新增分類成功:', res);
+    renderCategories();
+    renderTodoList();
+    closeModal('modal-category-manager');
+    if (nameInput) nameInput.value = '';
+    showToast(`已成功建立分類「${name}」！`, 'success');
+  } catch (err) {
+    console.error('[Category] 建立分類失敗:', err);
+    alert(`建立分類失敗: ${err.message || '請確認網路或資料庫連線'}`);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '建立分類';
+    }
+  }
+};
+
+// 全域保險函式：送出修改分類 (管理者專用)
+window.handleEditCategorySubmit = async function(e) {
+  if (e) e.preventDefault();
+  if (!appState.currentUser || appState.currentUser.role !== 'admin') {
+    alert('權限不足：僅有系統管理員可修改分類！');
+    return;
+  }
+
+  const catId = document.getElementById('input-edit-category-id')?.value;
+  const nameInput = document.getElementById('input-edit-category-name');
+  const name = nameInput ? nameInput.value.trim() : '';
+  const checkedColor = document.querySelector('input[name="edit-cat-color"]:checked')?.value || '#3b82f6';
+
+  if (!catId || !name) {
+    alert('請輸入分類名稱！');
+    return;
+  }
+
+  const submitBtn = document.getElementById('btn-save-edit-category');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = '儲存中...';
+  }
+
+  try {
+    await DataService.updateCategory(catId, name, checkedColor);
+    if (appState.selectedCategory === catId) {
+      DOM.currentCategoryIndicator.textContent = name;
+    }
+    renderCategories();
+    renderTodoList();
+    closeModal('modal-edit-category');
+    showToast(`已成功更新分類「${name}」！`, 'success');
+  } catch (err) {
+    console.error('[Category] 修改分類失敗:', err);
+    alert(`修改分類失敗: ${err.message || '請確認網路連線'}`);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '儲存變更';
+    }
+  }
+};
+
+// 全域保險函式：刪除分類 (管理者專用)
+window.handleDeleteCategoryClick = async function() {
+  if (!appState.currentUser || appState.currentUser.role !== 'admin') {
+    alert('權限不足：僅有系統管理員可刪除分類！');
+    return;
+  }
+
+  const catId = document.getElementById('input-edit-category-id')?.value;
+  const currentCat = appState.categories.find(c => c.id === catId);
+  const catName = currentCat ? currentCat.name : '此分類';
+
+  if (!confirm(`確定要刪除「${catName}」分類嗎？\n刪除後，原本屬於該分類的待辦事項將自動變更為「未分類」。`)) {
+    return;
+  }
+
+  const btn = document.getElementById('btn-delete-category');
+  if (btn) btn.disabled = true;
+
+  try {
+    await DataService.deleteCategory(catId);
+    renderCategories();
+    renderTodoList();
+    closeModal('modal-edit-category');
+    showToast(`已成功刪除分類「${catName}」`, 'success');
+  } catch (err) {
+    console.error('[Category] 刪除分類失敗:', err);
+    alert(`刪除分類失敗: ${err.message || '請確認網路連線'}`);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
 
 // 輔助函式：防範 XSS 的字串逸出
 function escapeHtml(str) {

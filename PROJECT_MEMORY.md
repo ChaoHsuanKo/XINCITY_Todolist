@@ -29,6 +29,10 @@
    - 支援 **GitHub Pages**：透過 `.github/workflows/pages.yml`，每次推送到 `main` 分支自動部署至 `https://chaohsuanko.github.io/XINCITY_Todolist/`。
    - 相容 **GitLab Pages**：保留 `.gitlab-ci.yml` 設定。
 
+6. **類別管理功能擴充與即時反饋修復 (2026-10-01)**
+   - **管理者專屬分類修改與刪除**：側邊欄自訂類別於管理員（`role: 'admin'`）登入時顯示 ✏️ 編輯按鈕，支援在彈窗內直接修改分類名稱、標籤色彩，或刪除分類（刪除時自動將關聯待辦改為未分類）。一般成員不顯示且無修改權限。
+   - **修復新增分類即時反饋問題**：解決雲端模式下 `DataService.addCategory` 未即時將回傳資料加入本地狀態清單而導致畫面未即時反映新增類別的狀況，並強化表單防呆與 Toast 提示。
+
 ---
 
 ## 🗄️ 資料庫綱要與 SQL 定義
