@@ -466,9 +466,13 @@ const DataService = {
         .update({ display_name: newDisplayName })
         .eq('email', email);
       if (error) throw error;
+      const target = appState.whitelist.find(u => u.email.toLowerCase() === email.toLowerCase());
+      if (target) {
+        target.display_name = newDisplayName;
+      }
     } else {
       const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY));
-      local.whitelist = local.whitelist.map(u => u.email === email ? { ...u, display_name: newDisplayName } : u);
+      local.whitelist = local.whitelist.map(u => u.email.toLowerCase() === email.toLowerCase() ? { ...u, display_name: newDisplayName } : u);
       localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(local));
       appState.whitelist = local.whitelist;
     }
@@ -938,30 +942,25 @@ function bindEvents() {
   DOM.btnOpenLogin.addEventListener('click', () => openModal('modal-login'));
 
   // 2. 修改暱稱
-  DOM.btnOpenEditNickname.addEventListener('click', () => {
-    if (!appState.currentUser) return;
-    DOM.inputNewNickname.value = appState.currentUser.display_name;
-    openModal('modal-edit-nickname');
-  });
+  if (DOM.btnOpenEditNickname) {
+    DOM.btnOpenEditNickname.addEventListener('click', () => {
+      openEditNicknameModal();
+    });
+  }
 
-  DOM.formEditNickname.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const newName = DOM.inputNewNickname.value.trim();
-    if (!newName) return;
+  // 支援點擊個人資訊卡片直接修改暱稱
+  const profileChip = document.getElementById('user-profile-chip');
+  if (profileChip) {
+    profileChip.addEventListener('click', () => {
+      openEditNicknameModal();
+    });
+  }
 
-    try {
-      await DataService.updateUserNickname(appState.currentUser.email, newName);
-      appState.currentUser.display_name = newName;
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(appState.currentUser));
-      renderNavbarAuth(true);
-      updateAssigneeDropdown();
-      renderTodoList();
-      closeModal('modal-edit-nickname');
-      showToast('暱稱修改成功！', 'success');
-    } catch (err) {
-      showToast('暱稱修改失敗', 'error');
-    }
-  });
+  if (DOM.formEditNickname) {
+    DOM.formEditNickname.addEventListener('submit', (e) => {
+      handleEditNicknameSubmit(e);
+    });
+  }
 
   // 3. 新增分類
   DOM.btnAddCategory.addEventListener('click', () => {
@@ -1225,6 +1224,94 @@ function closeModal(modalId) {
   }
 }
 window.closeModal = closeModal;
+
+// 全域保險函式：開啟修改暱稱視窗
+window.openEditNicknameModal = function() {
+  console.log('[Nickname] openEditNicknameModal 被觸發, 當前使用者:', appState.currentUser);
+  if (!appState.currentUser) {
+    showToast('請先輸入 Email 登入團隊系統！', 'error');
+    openModal('modal-login');
+    return;
+  }
+  const input = document.getElementById('input-new-nickname');
+  if (input) {
+    input.value = appState.currentUser.display_name || '';
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 100);
+  }
+  openModal('modal-edit-nickname');
+};
+
+// 全域保險函式：送出修改暱稱
+window.handleEditNicknameSubmit = async function(e) {
+  if (e) e.preventDefault();
+  const input = document.getElementById('input-new-nickname');
+  const newName = input ? input.value.trim() : '';
+  if (!newName) {
+    showToast('請輸入有效的暱稱！', 'error');
+    return;
+  }
+  if (!appState.currentUser) {
+    showToast('登入狀態已過期，請重新登入', 'error');
+    openModal('modal-login');
+    return;
+  }
+
+  const saveBtn = document.getElementById('btn-save-nickname');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = '儲存中...';
+  }
+
+  try {
+    await DataService.updateUserNickname(appState.currentUser.email, newName);
+    appState.currentUser.display_name = newName;
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(appState.currentUser));
+    renderNavbarAuth(true);
+    updateAssigneeDropdown();
+    renderTodoList();
+    closeModal('modal-edit-nickname');
+    showToast('暱稱修改成功！', 'success');
+  } catch (err) {
+    console.error('修改暱稱失敗:', err);
+    showToast(err.message || '暱稱修改失敗，請檢查網路連線', 'error');
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = '儲存暱稱';
+    }
+  }
+};
+
+// 全域保險函式：開啟成員管理視窗
+window.openWhitelistModal = function() {
+  if (!appState.currentUser || appState.currentUser.role !== 'admin') {
+    showToast('只有系統管理員具備成員管理權限！', 'error');
+    return;
+  }
+  renderWhitelistTable();
+  openModal('modal-whitelist-manager');
+};
+
+// 全域保險函式：開啟雲端設定視窗
+window.openCloudConfigModal = function() {
+  const savedConfig = localStorage.getItem(CONFIG_STORAGE_KEY);
+  if (savedConfig) {
+    try {
+      const { url, key } = JSON.parse(savedConfig);
+      DOM.inputSupabaseUrl.value = url || '';
+      DOM.inputSupabaseKey.value = key || '';
+    } catch (e) {}
+  }
+  openModal('modal-cloud-config');
+};
+
+// 全域保險函式：登出處理
+window.handleLogoutClick = function() {
+  handleLogout();
+};
 
 // 全域保險函式：開啟新增分類視窗
 window.openAddCategoryModal = function() {

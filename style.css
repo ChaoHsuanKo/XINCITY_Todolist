@@ -167,6 +167,17 @@ body {
   margin-right: 0.25rem;
 }
 
+.user-profile-chip.clickable {
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.user-profile-chip.clickable:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
 .user-avatar {
   width: 32px;
   height: 32px;
