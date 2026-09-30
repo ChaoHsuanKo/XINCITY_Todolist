@@ -38,6 +38,13 @@
    - **個人卡片點擊直覺操作**：擴充頂部導覽列個人身分晶片（`user-profile-chip`），點擊個人頭像或顯示姓名亦可直接開啟暱稱修改彈窗，並具備懸停微動畫。
    - **雙模快取一致性維護**：在雲端模式下執行 `DataService.updateUserNickname` 時，同步更新前端記憶體快取 `appState.whitelist` 與 `appState.currentUser`，確保下拉選單與介面即時同步最新暱稱。
 
+8. **DOM 延遲初始化、Toast 動態建立與系統診斷工具 (2026-10-01)**
+   - **根本架構防護 — DOM 快取延遲初始化**：將頂層立即執行的 `const DOM = {...}` 改為 `let DOM` 與 `initDOM()`，嚴格在 `DOMContentLoaded` 第一時間呼叫，確保所有元素已存在於 DOM 樹中，防止因元素缺失導致快取為 `null` 的連鎖崩潰。
+   - **Toast 容器動態建立**：`showToast` 全面解除對靜態 DOM 快取的硬依賴，改為動態查詢；若頁面無 `#toast-container`，自動動態建立並掛載至 `<body>`，徹底根絕 `null is not an object (evaluating 'DOM.toastContainer.appendChild')` 錯誤。
+   - **防禦性資料讀取**：對 `display_name` 增加 fallback 保護（預設取用 email 前綴），避免 `charAt(0)` 拋出 TypeError。
+   - **系統自動診斷工具 (`diagnose.html`)**：內建全功能瀏覽器環境診斷頁面，可一鍵測試 JS Alert、彈窗呼叫、appState 狀態、強制管理員登入與 DOM 元素存在性。
+   - **快取破除機制**：前端資源標籤全面更新至 `v=20261001_06`，杜絕各瀏覽器因快取舊腳本造成行為不一致。
+
 ---
 
 ## 🗄️ 資料庫綱要與 SQL 定義
