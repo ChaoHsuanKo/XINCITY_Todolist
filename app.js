@@ -94,93 +94,116 @@ const appState = {
 };
 
 // ==========================================
-// 2. DOM 元素快取
+// 2. DOM 元素快取（延遲初始化，由 initDOM() 在 DOMContentLoaded 時執行）
 // ==========================================
-const DOM = {
-  // 導航列
-  statusBadge: document.getElementById('status-mode-badge'),
-  loggedOutView: document.getElementById('logged-out-view'),
-  loggedInView: document.getElementById('logged-in-view'),
-  btnOpenLogin: document.getElementById('btn-open-login'),
-  userDisplayName: document.getElementById('user-display-name'),
-  userEmailText: document.getElementById('user-email-text'),
-  userAvatarBadge: document.getElementById('user-avatar-badge'),
-  btnOpenEditNickname: document.getElementById('btn-open-edit-nickname'),
-  btnOpenWhitelist: document.getElementById('btn-open-whitelist'),
-  btnOpenCloudConfig: document.getElementById('btn-open-cloud-config'),
-  btnLogout: document.getElementById('btn-logout'),
+let DOM = {};
 
-  // 側邊欄
-  categoryFilterList: document.getElementById('category-filter-list'),
-  btnAddCategory: document.getElementById('btn-add-category'),
-  filterTabs: document.getElementById('filter-tabs'),
-  filterAll: document.getElementById('filter-all'),
-  filterActive: document.getElementById('filter-active'),
-  filterCompleted: document.getElementById('filter-completed'),
-  countAll: document.getElementById('count-all'),
-  countActive: document.getElementById('count-active'),
-  countCompleted: document.getElementById('count-completed'),
-  toggleHideCompleted: document.getElementById('toggle-hide-completed'),
-  selectSortBy: document.getElementById('select-sort-by'),
+function initDOM() {
+  DOM = {
+    // 導航列
+    statusBadge: document.getElementById('status-mode-badge'),
+    loggedOutView: document.getElementById('logged-out-view'),
+    loggedInView: document.getElementById('logged-in-view'),
+    btnOpenLogin: document.getElementById('btn-open-login'),
+    userDisplayName: document.getElementById('user-display-name'),
+    userEmailText: document.getElementById('user-email-text'),
+    userAvatarBadge: document.getElementById('user-avatar-badge'),
+    btnOpenEditNickname: document.getElementById('btn-open-edit-nickname'),
+    btnOpenWhitelist: document.getElementById('btn-open-whitelist'),
+    btnOpenCloudConfig: document.getElementById('btn-open-cloud-config'),
+    btnLogout: document.getElementById('btn-logout'),
 
-  // 任務內容區
-  formCreateTodo: document.getElementById('form-create-todo'),
-  inputTodoTitle: document.getElementById('input-todo-title'),
-  selectTodoCategory: document.getElementById('select-todo-category'),
-  selectTodoAssignee: document.getElementById('select-todo-assignee'),
-  inputTodoDue: document.getElementById('input-todo-due'),
-  currentCategoryIndicator: document.getElementById('current-category-indicator'),
-  taskSummaryText: document.getElementById('task-summary-text'),
-  inputSearchTasks: document.getElementById('input-search-tasks'),
-  todoListContainer: document.getElementById('todo-list-container'),
-  emptyState: document.getElementById('empty-state'),
+    // 側邊欄
+    categoryFilterList: document.getElementById('category-filter-list'),
+    btnAddCategory: document.getElementById('btn-add-category'),
+    filterTabs: document.getElementById('filter-tabs'),
+    filterAll: document.getElementById('filter-all'),
+    filterActive: document.getElementById('filter-active'),
+    filterCompleted: document.getElementById('filter-completed'),
+    countAll: document.getElementById('count-all'),
+    countActive: document.getElementById('count-active'),
+    countCompleted: document.getElementById('count-completed'),
+    toggleHideCompleted: document.getElementById('toggle-hide-completed'),
+    selectSortBy: document.getElementById('select-sort-by'),
 
-  // 彈跳視窗
-  modalLogin: document.getElementById('modal-login'),
-  formLogin: document.getElementById('form-login'),
-  inputLoginEmail: document.getElementById('input-login-email'),
+    // 任務內容區
+    formCreateTodo: document.getElementById('form-create-todo'),
+    inputTodoTitle: document.getElementById('input-todo-title'),
+    selectTodoCategory: document.getElementById('select-todo-category'),
+    selectTodoAssignee: document.getElementById('select-todo-assignee'),
+    inputTodoDue: document.getElementById('input-todo-due'),
+    currentCategoryIndicator: document.getElementById('current-category-indicator'),
+    taskSummaryText: document.getElementById('task-summary-text'),
+    inputSearchTasks: document.getElementById('input-search-tasks'),
+    todoListContainer: document.getElementById('todo-list-container'),
+    emptyState: document.getElementById('empty-state'),
 
-  modalEditNickname: document.getElementById('modal-edit-nickname'),
-  formEditNickname: document.getElementById('form-edit-nickname'),
-  inputNewNickname: document.getElementById('input-new-nickname'),
+    // 彈跳視窗
+    modalLogin: document.getElementById('modal-login'),
+    formLogin: document.getElementById('form-login'),
+    inputLoginEmail: document.getElementById('input-login-email'),
 
-  modalCategoryManager: document.getElementById('modal-category-manager'),
-  formCreateCategory: document.getElementById('form-create-category'),
-  inputCategoryName: document.getElementById('input-category-name'),
+    modalEditNickname: document.getElementById('modal-edit-nickname'),
+    formEditNickname: document.getElementById('form-edit-nickname'),
+    inputNewNickname: document.getElementById('input-new-nickname'),
 
-  modalEditCategory: document.getElementById('modal-edit-category'),
-  formEditCategory: document.getElementById('form-edit-category'),
-  inputEditCategoryId: document.getElementById('input-edit-category-id'),
-  inputEditCategoryName: document.getElementById('input-edit-category-name'),
-  btnDeleteCategory: document.getElementById('btn-delete-category'),
+    modalCategoryManager: document.getElementById('modal-category-manager'),
+    formCreateCategory: document.getElementById('form-create-category'),
+    inputCategoryName: document.getElementById('input-category-name'),
 
-  modalWhitelistManager: document.getElementById('modal-whitelist-manager'),
-  formAddWhitelist: document.getElementById('form-add-whitelist'),
-  inputNewMemberEmail: document.getElementById('input-new-member-email'),
-  inputNewMemberName: document.getElementById('input-new-member-name'),
-  selectNewMemberRole: document.getElementById('select-new-member-role'),
-  whitelistTableBody: document.getElementById('whitelist-table-body'),
+    modalEditCategory: document.getElementById('modal-edit-category'),
+    formEditCategory: document.getElementById('form-edit-category'),
+    inputEditCategoryId: document.getElementById('input-edit-category-id'),
+    inputEditCategoryName: document.getElementById('input-edit-category-name'),
+    btnDeleteCategory: document.getElementById('btn-delete-category'),
 
-  modalCloudConfig: document.getElementById('modal-cloud-config'),
-  formCloudConfig: document.getElementById('form-cloud-config'),
-  inputSupabaseUrl: document.getElementById('input-supabase-url'),
-  inputSupabaseKey: document.getElementById('input-supabase-key'),
-  btnResetToLocal: document.getElementById('btn-reset-to-local'),
+    modalWhitelistManager: document.getElementById('modal-whitelist-manager'),
+    formAddWhitelist: document.getElementById('form-add-whitelist'),
+    inputNewMemberEmail: document.getElementById('input-new-member-email'),
+    inputNewMemberName: document.getElementById('input-new-member-name'),
+    selectNewMemberRole: document.getElementById('select-new-member-role'),
+    whitelistTableBody: document.getElementById('whitelist-table-body'),
 
-  toastContainer: document.getElementById('toast-container')
-};
+    modalCloudConfig: document.getElementById('modal-cloud-config'),
+    formCloudConfig: document.getElementById('form-cloud-config'),
+    inputSupabaseUrl: document.getElementById('input-supabase-url'),
+    inputSupabaseKey: document.getElementById('input-supabase-key'),
+    btnResetToLocal: document.getElementById('btn-reset-to-local'),
+
+    toastContainer: document.getElementById('toast-container')
+  };
+
+  // 統計 DOM 綁定成功/失敗數
+  const total = Object.keys(DOM).length;
+  const nullCount = Object.values(DOM).filter(v => v === null).length;
+  if (nullCount > 0) {
+    const missing = Object.entries(DOM).filter(([k, v]) => v === null).map(([k]) => k);
+    console.warn(`[DOM] ${nullCount}/${total} 個元素未找到:`, missing);
+  } else {
+    console.log(`[DOM] 全部 ${total} 個元素綁定成功`);
+  }
+}
 
 // ==========================================
 // 3. 提示訊息 (Toast) 模組
 // ==========================================
 function showToast(message, type = 'success') {
+  // 動態查找容器，不依賴 DOM 快取（避免快取為 null 時崩潰）
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   toast.innerHTML = `
     <span>${type === 'success' ? '✓' : '⚠'}</span>
     <span>${message}</span>
   `;
-  DOM.toastContainer.appendChild(toast);
+  container.appendChild(toast);
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transform = 'translateY(10px)';
@@ -1482,7 +1505,10 @@ function escapeHtml(str) {
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('[App] 系統啟動中...');
 
-  // 先綁定所有事件（不依賴任何資料）
+  // 最先初始化 DOM 快取（確保所有元素已存在於 DOM 中）
+  initDOM();
+
+  // 綁定所有事件（不依賴任何資料）
   bindEvents();
 
   // 初始化資料層（允許失敗，失敗則降級為本地模式）
