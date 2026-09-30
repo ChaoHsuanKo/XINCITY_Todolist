@@ -319,7 +319,8 @@ body {
   gap: 0.35rem;
 }
 
-.btn-cat-action {
+.btn-cat-action,
+.btn-cat-edit {
   opacity: 0;
   visibility: hidden;
   display: inline-flex;
@@ -336,12 +337,14 @@ body {
   transition: var(--transition-fast);
 }
 
-.category-item:hover .btn-cat-action {
+.category-item:hover .btn-cat-action,
+.category-item:hover .btn-cat-edit {
   opacity: 1;
   visibility: visible;
 }
 
-.btn-cat-action:hover {
+.btn-cat-action:hover,
+.btn-cat-edit:hover {
   background: var(--primary-100);
   color: var(--primary-700);
   transform: scale(1.08);
