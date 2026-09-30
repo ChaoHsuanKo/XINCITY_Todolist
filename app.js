@@ -222,7 +222,18 @@ const DataService = {
     }
 
     this.updateModeIndicator();
-    await this.fetchData();
+    try {
+      await this.fetchData();
+    } catch (fetchErr) {
+      console.error('[DataService] fetchData 失敗，嘗試使用本地快取:', fetchErr);
+      // 如果雲端抓取失敗，嘗試用本地資料補救
+      if (appState.whitelist.length === 0) {
+        const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY) || '{}');
+        appState.whitelist = local.whitelist || INITIAL_LOCAL_STATE.whitelist;
+        appState.categories = local.categories || INITIAL_LOCAL_STATE.categories;
+        appState.todos = local.todos || INITIAL_LOCAL_STATE.todos;
+      }
+    }
   },
 
   updateModeIndicator() {
@@ -518,19 +529,31 @@ const DataService = {
 // 5. 身份驗證與登入流程
 // ==========================================
 function checkExistingAuth() {
+  console.log('[Auth] 開始檢查已存在的身份驗證...');
+  console.log('[Auth] 白名單中共有', appState.whitelist.length, '位成員');
+
   const savedUserJson = sessionStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem(AUTH_STORAGE_KEY);
   if (savedUserJson) {
+    console.log('[Auth] 發現儲存的身份資料');
     try {
       const user = JSON.parse(savedUserJson);
+      console.log('[Auth] 嘗試驗證使用者:', user.email);
+
       // 確保仍存在於白名單
       const verified = appState.whitelist.find(u => u.email.toLowerCase() === user.email.toLowerCase());
       if (verified) {
+        console.log('[Auth] 白名單驗證通過，角色:', verified.role);
         setUserSession(verified);
         return;
+      } else {
+        console.warn('[Auth] 使用者不在白名單中:', user.email, '→ 白名單內容:', appState.whitelist.map(u => u.email));
+        showToast('您的帳號已從白名單中移除，請重新登入', 'error');
       }
     } catch (e) {
-      console.error(e);
+      console.error('[Auth] 解析儲存身份資料失敗:', e);
     }
+  } else {
+    console.log('[Auth] 無已儲存的身份資料，顯示登入視窗');
   }
 
   // 尚未登入則彈出登入視窗
@@ -1457,10 +1480,54 @@ function escapeHtml(str) {
 // 8. 系統啟動入口
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
+  console.log('[App] 系統啟動中...');
+
+  // 先綁定所有事件（不依賴任何資料）
   bindEvents();
-  await DataService.init();
-  updateAssigneeDropdown();
-  renderCategories();
-  renderTodoList();
-  checkExistingAuth();
+
+  // 初始化資料層（允許失敗，失敗則降級為本地模式）
+  try {
+    await DataService.init();
+    console.log('[App] DataService 初始化完成，模式:', appState.isCloudMode ? '雲端' : '本地');
+  } catch (err) {
+    console.error('[App] DataService 初始化發生錯誤，降級為本地模式:', err);
+    // 確保本地模式資料可用
+    appState.isCloudMode = false;
+    try {
+      const localData = localStorage.getItem(LOCAL_DATA_KEY);
+      if (!localData) {
+        localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(INITIAL_LOCAL_STATE));
+      }
+      const parsed = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY) || '{}');
+      appState.whitelist = parsed.whitelist || [];
+      appState.categories = parsed.categories || [];
+      appState.todos = parsed.todos || [];
+    } catch (e) {
+      console.error('[App] 本地資料讀取也失敗:', e);
+      appState.whitelist = INITIAL_LOCAL_STATE.whitelist;
+      appState.categories = INITIAL_LOCAL_STATE.categories;
+      appState.todos = INITIAL_LOCAL_STATE.todos;
+    }
+    DataService.updateModeIndicator();
+  }
+
+  // 以下步驟無論資料層成功或失敗都必須執行
+  try {
+    updateAssigneeDropdown();
+  } catch (e) { console.error('[App] updateAssigneeDropdown 錯誤:', e); }
+
+  try {
+    renderCategories();
+  } catch (e) { console.error('[App] renderCategories 錯誤:', e); }
+
+  try {
+    renderTodoList();
+  } catch (e) { console.error('[App] renderTodoList 錯誤:', e); }
+
+  // 最關鍵：必須執行身分驗證恢復，否則整個 UI 無法互動
+  try {
+    checkExistingAuth();
+  } catch (e) { console.error('[App] checkExistingAuth 錯誤:', e); }
+
+  console.log('[App] 系統啟動完成，當前使用者:', appState.currentUser?.email || '未登入');
 });

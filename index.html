@@ -11,11 +11,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
   
-  <!-- Supabase JS SDK (CDN) -->
+  <!-- Supabase JS SDK (CDN) - 非同步載入，避免 CDN 連線問題阻塞頁面 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <!-- 樣式表 (含防快取版本號) -->
-  <link rel="stylesheet" href="style.css?v=20261001_03">
+  <link rel="stylesheet" href="style.css?v=20261001_04">
 </head>
 <body>
   <!-- 應用程式主容器 -->
@@ -391,6 +391,6 @@
   <div class="toast-container" id="toast-container"></div>
 
   <!-- 應用程式主邏輯 (含防快取版本號) -->
-  <script src="app.js?v=20261001_03"></script>
+  <script src="app.js?v=20261001_04"></script>
 </body>
 </html>
