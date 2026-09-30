@@ -33,6 +33,11 @@
    - **管理者專屬分類修改與刪除**：側邊欄自訂類別於管理員（`role: 'admin'`）登入時顯示 ✏️ 編輯按鈕，支援在彈窗內直接修改分類名稱、標籤色彩，或刪除分類（刪除時自動將關聯待辦改為未分類）。一般成員不顯示且無修改權限。
    - **修復新增分類即時反饋問題**：解決雲端模式下 `DataService.addCategory` 未即時將回傳資料加入本地狀態清單而導致畫面未即時反映新增類別的狀況，並強化表單防呆與 Toast 提示。
 
+7. **個人暱稱修改機制修復與雙重觸發加固 (2026-10-01)**
+   - **全域保險函式與 inline 事件綁定**：新增 `window.openEditNicknameModal` 與 `window.handleEditNicknameSubmit`，於 `index.html` 補齊 `onclick` 與 `onsubmit`，杜絕腳本載入時間差導致按鈕點擊無反應之狀況。
+   - **個人卡片點擊直覺操作**：擴充頂部導覽列個人身分晶片（`user-profile-chip`），點擊個人頭像或顯示姓名亦可直接開啟暱稱修改彈窗，並具備懸停微動畫。
+   - **雙模快取一致性維護**：在雲端模式下執行 `DataService.updateUserNickname` 時，同步更新前端記憶體快取 `appState.whitelist` 與 `appState.currentUser`，確保下拉選單與介面即時同步最新暱稱。
+
 ---
 
 ## 🗄️ 資料庫綱要與 SQL 定義
