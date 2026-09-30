@@ -619,9 +619,10 @@ function renderNavbarAuth(isLoggedIn) {
     DOM.loggedOutView.classList.add('hidden');
     DOM.loggedInView.classList.remove('hidden');
 
-    DOM.userDisplayName.textContent = appState.currentUser.display_name;
-    DOM.userEmailText.textContent = appState.currentUser.email;
-    DOM.userAvatarBadge.textContent = appState.currentUser.display_name.charAt(0);
+    const displayName = appState.currentUser.display_name || appState.currentUser.email.split('@')[0] || '使用者';
+    DOM.userDisplayName.textContent = displayName;
+    DOM.userEmailText.textContent = appState.currentUser.email || '';
+    DOM.userAvatarBadge.textContent = displayName.charAt(0).toUpperCase();
 
     // 只有管理員看得見「成員管理」
     if (appState.currentUser.role === 'admin') {
@@ -862,11 +863,11 @@ function renderTodoList() {
     ` : '';
 
     // 負責人資訊
-    const assignee = appState.whitelist.find(u => u.email === todo.assigned_email);
+    const assigneeName = assignee ? (assignee.display_name || assignee.email.split('@')[0] || '成員') : '';
     const assigneeHtml = assignee ? `
-      <span class="assignee-badge" title="負責人: ${escapeHtml(assignee.display_name)} (${assignee.email})">
-        <span class="assignee-avatar-mini">${escapeHtml(assignee.display_name.charAt(0))}</span>
-        <span>${escapeHtml(assignee.display_name)}</span>
+      <span class="assignee-badge" title="負責人: ${escapeHtml(assigneeName)} (${escapeHtml(assignee.email || '')})">
+        <span class="assignee-avatar-mini">${escapeHtml(assigneeName.charAt(0).toUpperCase())}</span>
+        <span>${escapeHtml(assigneeName)}</span>
       </span>
     ` : '';
 

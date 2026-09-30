@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>XINCITY Todolist - 系統診斷工具</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Noto Sans TC', sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+    h1 { color: #38bdf8; margin-bottom: 1rem; }
+    .test-item { padding: 0.5rem 0; border-bottom: 1px solid #334155; }
+    .pass { color: #4ade80; }
+    .fail { color: #f87171; }
+    .warn { color: #fbbf24; }
+    .info { color: #94a3b8; font-size: 0.85rem; margin-left: 1.5rem; }
+    pre { background: #1e293b; padding: 1rem; border-radius: 8px; overflow-x: auto; margin: 0.5rem 0; font-size: 0.8rem; color: #cbd5e1; }
+    button { background: #3b82f6; color: white; border: none; padding: 0.6rem 1.2rem; border-radius: 6px; cursor: pointer; font-size: 1rem; margin: 0.5rem 0.5rem 0.5rem 0; }
+    button:hover { background: #2563eb; }
+    #log { margin-top: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>🔬 XINCITY Todolist 系統診斷工具</h1>
+  <p style="color:#94a3b8;margin-bottom:1rem;">本頁面會自動檢測您的瀏覽器環境，找出功能無反應的根本原因。</p>
+  
+  <div id="results"></div>
+  
+  <h2 style="margin-top:2rem;color:#38bdf8;">📋 互動測試</h2>
+  <button onclick="testAlert()">測試 1: 基本 JS Alert</button>
+  <button onclick="testOpenModal()">測試 2: 呼叫 openModal</button>
+  <button onclick="testEditNickname()">測試 3: 呼叫 openEditNicknameModal</button>
+  <button onclick="showAppState()">測試 4: 顯示 appState</button>
+  <button onclick="testManualLogin()">測試 5: 強制登入管理員</button>
+  
+  <div id="log"></div>
+  
+  <script>
+    const results = document.getElementById('results');
+    const logDiv = document.getElementById('log');
+    
+    function log(msg, cls = '') {
+      const p = document.createElement('div');
+      p.className = `test-item ${cls}`;
+      p.innerHTML = msg;
+      results.appendChild(p);
+    }
+    
+    function logAction(msg) {
+      const p = document.createElement('pre');
+      p.textContent = msg;
+      logDiv.appendChild(p);
+    }
+    
+    // 捕獲所有 JS 錯誤
+    const errors = [];
+    window.onerror = function(msg, url, line, col, error) {
+      errors.push({ msg, url, line, col, stack: error?.stack });
+      return false;
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      errors.push({ msg: 'Unhandled Promise Rejection: ' + e.reason, stack: e.reason?.stack });
+    });
+    
+    function testAlert() {
+      alert('JavaScript 基本執行正常！');
+      logAction('✅ alert() 執行成功');
+    }
+    
+    function testOpenModal() {
+      if (typeof window.openModal === 'function') {
+        logAction('✅ window.openModal 存在，嘗試開啟 modal-edit-nickname...');
+        try {
+          window.openModal('modal-edit-nickname');
+          logAction('✅ openModal 呼叫成功');
+        } catch(e) {
+          logAction('❌ openModal 錯誤: ' + e.message + '\n' + e.stack);
+        }
+      } else {
+        logAction('❌ window.openModal 未定義！這表示 app.js 未完整載入。');
+      }
+    }
+    
+    function testEditNickname() {
+      if (typeof window.openEditNicknameModal === 'function') {
+        logAction('✅ window.openEditNicknameModal 存在，嘗試呼叫...');
+        try {
+          window.openEditNicknameModal();
+          logAction('✅ openEditNicknameModal 呼叫成功');
+        } catch(e) {
+          logAction('❌ openEditNicknameModal 錯誤: ' + e.message + '\n' + e.stack);
+        }
+      } else {
+        logAction('❌ window.openEditNicknameModal 未定義！app.js 在定義此函式前就已出錯。');
+      }
+    }
+    
+    function showAppState() {
+      if (typeof appState !== 'undefined') {
+        logAction(JSON.stringify({
+          currentUser: appState.currentUser,
+          isCloudMode: appState.isCloudMode,
+          whitelistCount: appState.whitelist?.length,
+          categoriesCount: appState.categories?.length,
+          todosCount: appState.todos?.length,
+          selectedCategory: appState.selectedCategory
+        }, null, 2));
+      } else {
+        logAction('❌ appState 未定義！app.js 根本沒有被執行。');
+      }
+    }
+    
+    function testManualLogin() {
+      if (typeof appState !== 'undefined' && typeof setUserSession === 'function') {
+        const admin = appState.whitelist?.find(u => u.role === 'admin');
+        if (admin) {
+          setUserSession(admin);
+          logAction('✅ 已強制登入管理員: ' + admin.email + '\nappState.currentUser 現在是: ' + JSON.stringify(appState.currentUser));
+          logAction('👆 請現在嘗試點擊主頁面的「修改暱稱」按鈕');
+        } else {
+          logAction('❌ 白名單中找不到管理員，白名單內容: ' + JSON.stringify(appState.whitelist));
+        }
+      } else {
+        logAction('❌ appState 或 setUserSession 未定義');
+      }
+    }
+    
+    // 頁面載入後執行診斷
+    window.addEventListener('load', function() {
+      // 等待一下讓 app.js 完成初始化
+      setTimeout(runDiagnostics, 2000);
+    });
+    
+    function runDiagnostics() {
+      log('<b>🔍 開始系統診斷...</b>');
+      
+      // 1. 檢查 Supabase SDK
+      if (typeof window.supabase !== 'undefined') {
+        log('✅ Supabase SDK 已載入 (window.supabase 存在)', 'pass');
+      } else {
+        log('❌ <b>Supabase SDK 未載入！</b> window.supabase 是 undefined。CDN 可能被封鎖或載入失敗。', 'fail');
+        log('<div class="info">這會導致雲端模式無法啟用，但本地模式應該仍可運作。</div>');
+      }
+      
+      // 2. 檢查 app.js 是否載入
+      if (typeof appState !== 'undefined') {
+        log('✅ app.js 已載入 (appState 物件存在)', 'pass');
+      } else {
+        log('❌ <b>app.js 未載入或執行失敗！</b> appState 未定義。', 'fail');
+        log('<div class="info">這是所有功能無法運作的根本原因。請檢查瀏覽器 Console (F12) 中的錯誤。</div>');
+        
+        if (errors.length > 0) {
+          log('<b>捕獲到的 JavaScript 錯誤：</b>', 'fail');
+          errors.forEach(e => {
+            log(`<pre>${e.msg}\n來源: ${e.url || '未知'} 第 ${e.line || '?'} 行\n${e.stack || ''}</pre>`, 'fail');
+          });
+        }
+        return;
+      }
+      
+      // 3. 檢查關鍵全域函式
+      const globalFuncs = [
+        'openModal', 'closeModal', 'openEditNicknameModal', 'handleEditNicknameSubmit',
+        'openAddCategoryModal', 'handleCreateCategorySubmit', 'openWhitelistModal',
+        'openCloudConfigModal', 'handleLogoutClick', 'showToast', 'escapeHtml'
+      ];
+      let missingFuncs = [];
+      globalFuncs.forEach(fn => {
+        if (typeof window[fn] !== 'function') {
+          missingFuncs.push(fn);
+        }
+      });
+      if (missingFuncs.length === 0) {
+        log('✅ 所有全域函式已正確定義 (' + globalFuncs.length + ' 個)', 'pass');
+      } else {
+        log('❌ <b>以下全域函式未定義：</b> ' + missingFuncs.join(', '), 'fail');
+        log('<div class="info">app.js 在定義到這些函式之前就已出錯中斷。</div>');
+      }
+      
+      // 4. 檢查 DOM 元素
+      const criticalDOM = [
+        'modal-login', 'modal-edit-nickname', 'form-edit-nickname', 'input-new-nickname',
+        'btn-open-edit-nickname', 'logged-in-view', 'logged-out-view', 
+        'user-display-name', 'toast-container', 'status-mode-badge'
+      ];
+      let missingDOM = [];
+      criticalDOM.forEach(id => {
+        if (!document.getElementById(id)) missingDOM.push(id);
+      });
+      if (missingDOM.length === 0) {
+        log('✅ 所有關鍵 DOM 元素存在 (' + criticalDOM.length + ' 個)', 'pass');
+      } else {
+        log('❌ <b>以下 DOM 元素缺失：</b> ' + missingDOM.join(', '), 'fail');
+      }
+      
+      // 5. 檢查 appState 狀態
+      log('<b>📊 appState 目前狀態：</b>');
+      log(`  模式: ${appState.isCloudMode ? '☁️ 雲端' : '💾 本地'}`, 'info');
+      log(`  當前使用者: ${appState.currentUser ? appState.currentUser.email + ' (' + appState.currentUser.role + ')' : '❌ null (未登入)'}`, appState.currentUser ? 'pass' : 'warn');
+      log(`  白名單成員數: ${appState.whitelist?.length || 0}`, appState.whitelist?.length > 0 ? 'pass' : 'fail');
+      log(`  分類數: ${appState.categories?.length || 0}`, 'info');
+      log(`  待辦事項數: ${appState.todos?.length || 0}`, 'info');
+      
+      if (appState.whitelist?.length > 0) {
+        log('  白名單成員: ' + appState.whitelist.map(u => u.email + '(' + u.role + ')').join(', '), 'info');
+      }
+      
+      // 6. 檢查 localStorage
+      const savedUser = localStorage.getItem('teamsync_todo_current_user');
+      const savedConfig = localStorage.getItem('teamsync_todo_cloud_config');
+      log(`  localStorage 已存使用者: ${savedUser ? '有' : '無'}`, 'info');
+      log(`  localStorage 雲端設定: ${savedConfig ? '有' : '無'}`, 'info');
+      
+      // 7. 檢查 btn-open-edit-nickname 的事件
+      const btn = document.getElementById('btn-open-edit-nickname');
+      if (btn) {
+        const onclick = btn.getAttribute('onclick');
+        const computed = window.getComputedStyle(btn);
+        log(`  修改暱稱按鈕 onclick: ${onclick || '無'}`, onclick ? 'pass' : 'fail');
+        log(`  修改暱稱按鈕 display: ${computed.display}`, computed.display !== 'none' ? 'pass' : 'fail');
+        log(`  修改暱稱按鈕 visibility: ${computed.visibility}`, computed.visibility !== 'hidden' ? 'pass' : 'fail');
+        log(`  修改暱稱按鈕 pointer-events: ${computed.pointerEvents}`, computed.pointerEvents !== 'none' ? 'pass' : 'fail');
+        log(`  修改暱稱按鈕 opacity: ${computed.opacity}`, 'info');
+        
+        // 檢查按鈕是否被其他元素遮擋
+        const rect = btn.getBoundingClientRect();
+        const topEl = document.elementFromPoint(rect.left + rect.width/2, rect.top + rect.height/2);
+        log(`  按鈕位置: (${Math.round(rect.left)}, ${Math.round(rect.top)}) ${rect.width}x${rect.height}`, 'info');
+        if (topEl === btn || btn.contains(topEl)) {
+          log('  ✅ 按鈕未被遮擋，可以點擊', 'pass');
+        } else {
+          log(`  ❌ <b>按鈕被遮擋！</b>遮擋元素: &lt;${topEl?.tagName} id="${topEl?.id}" class="${topEl?.className}"&gt;`, 'fail');
+        }
+      }
+      
+      // 8. 捕獲到的錯誤
+      if (errors.length > 0) {
+        log('<b>⚠️ 頁面載入期間捕獲到 ' + errors.length + ' 個 JavaScript 錯誤：</b>', 'fail');
+        errors.forEach((e, i) => {
+          log(`<pre>錯誤 ${i+1}: ${e.msg}\n來源: ${e.url || '未知'} 第 ${e.line || '?'} 行\n${e.stack || ''}</pre>`, 'fail');
+        });
+      } else {
+        log('✅ 頁面載入期間無 JavaScript 錯誤', 'pass');
+      }
+      
+      // 9. 結論
+      log('<br><b>🏁 診斷結論：</b>');
+      if (!appState.currentUser) {
+        log('⚠️ <b>appState.currentUser 為 null</b> — 這是功能無法運作的直接原因。點擊上方「測試 5: 強制登入管理員」按鈕，然後回到主頁面測試。', 'warn');
+      }
+      if (missingFuncs.length > 0) {
+        log('❌ app.js 未完整載入 — 部分全域函式缺失', 'fail');
+      }
+    }
+  </script>
+  
+  <!-- 載入主應用的所有資源 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="style.css?v=diag">
+  <!-- 載入主頁 HTML（作為隱藏 iframe 以取得 DOM 元素） -->
+  
+  <!-- 直接載入 app.js 以取得 appState 和全域函式 -->
+  <script src="app.js?v=20261001_06"></script>
+</body>
+</html>
