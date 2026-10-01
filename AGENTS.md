@@ -17,7 +17,7 @@
 - **專案名稱**：Todo List 線上協作系統 (XINCITY Todolist)
 - **倉庫位址**：`https://github.com/ChaoHsuanKo/XINCITY_Todolist.git`
 - **正式發布網址**：`https://chaohsuanko.github.io/XINCITY_Todolist/`
-- **主要目的**：為團隊設計之輕量化、即時同步的 TodoList 系統，具備白名單免密登入、即時雙向推播、多維度分類篩選排序。
+- **主要目的**：為團隊設計之輕量化、即時同步的 TodoList 系統，具備 Google 帳號登入 + 白名單權限控管、即時雙向推播、多維度分類篩選排序。
 
 ---
 
@@ -44,7 +44,9 @@
 
 ## ⚠️ 重大架構決策 (Key Decisions)
 1. **白名單機制**：
-   - 僅允許在 `users_whitelist` 表內的 Email 登入。
+   - 雲端模式以 **Supabase Auth（Google 登入）** 驗證身分，僅 Google 帳號 Email 存在於 `users_whitelist` 者可使用。
+   - 權限由資料庫 RLS 強制執行（`schema.sql` 第 10 節）：未登入者無法讀寫；成員可讀寫待辦、新增分類、以 `update_my_display_name()` 修改自己的暱稱；修改/刪除分類與管理白名單僅限 admin。前端的權限判斷僅為 UI 顯示用途。
+   - 本地體驗模式（LocalStorage）無驗證，仍以輸入白名單 Email 的方式登入。
    - 一般成員僅能檢視與指派任務；最高管理員（`admin`）擁有頂部「成員管理」按鈕，可直接新增/移除白名單成員與切換權限。
 2. **移除快捷測試帳號**：
    - 為防止非授權人員或測試按鈕導致權限混亂，登入彈窗已**完全移除**「管理員一鍵填入」等快捷測試按鈕，全面要求手動輸入真實授權之 Email 進行身分驗證。
@@ -60,4 +62,5 @@
 2. **雲端連線設定**：
    - 首次開啟若未偵測到 Supabase 金鑰，點擊右上角「雲端設定」圖示，輸入 Supabase URL 與 `anon_key`，金鑰將持久化保存在瀏覽器的 `localStorage` 中。
 3. **管理員測試**：
-   - 登入時輸入 `chaohsuan.ke@gmail.com`，即可啟用管理員成員管理功能。
+   - 雲端模式：以 Google 帳號 `chaohsuan.ke@gmail.com` 登入即為管理員。本機測試需在 Supabase → Authentication → URL Configuration 的 Redirect URLs 加入本機網址（如 `http://localhost:3000/**`）。
+   - 本地體驗模式：輸入 `chaohsuan.ke@gmail.com` 即可。

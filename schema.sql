@@ -79,3 +79,109 @@ CREATE POLICY "允許所有人維護待辦" ON public.todos FOR ALL USING (true)
 ALTER TABLE public.todos ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE public.todos ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high'));
 ALTER TABLE public.todos ADD COLUMN IF NOT EXISTS subtasks JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- ==========================================
+-- 10. 身分驗證與權限控管 (2026-10-02 新增)
+-- 改以 Supabase Auth (Google 登入) 驗證身分，並以白名單限制資料存取。
+--
+-- ⚠️ 執行前提（順序很重要，否則所有人都會無法使用）：
+--   1. Supabase 已啟用 Google 登入 (Authentication → Sign In / Providers → Google)
+--   2. 支援 Google 登入的新版前端已部署，且管理員已確認可以成功登入
+-- 執行後：
+--   - 未登入者 (anon) 無法讀寫任何資料
+--   - 白名單成員可讀寫待辦、新增分類、修改自己的暱稱
+--   - 修改/刪除分類、管理白名單僅限 admin
+-- ==========================================
+BEGIN;
+
+-- 10-1. 輔助函式
+-- 目前登入者的 Email（小寫）；未登入時為空字串
+CREATE OR REPLACE FUNCTION public.current_user_email()
+RETURNS text LANGUAGE sql STABLE AS $$
+  SELECT lower(coalesce(auth.jwt() ->> 'email', ''));
+$$;
+
+-- 是否為白名單成員（SECURITY DEFINER：避免在 users_whitelist 自身的 RLS 中遞迴）
+CREATE OR REPLACE FUNCTION public.is_whitelisted()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.users_whitelist WHERE lower(email) = public.current_user_email()
+  );
+$$;
+
+-- 是否為管理員
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.users_whitelist
+    WHERE lower(email) = public.current_user_email() AND role = 'admin'
+  );
+$$;
+
+-- 修改自己的暱稱（只能改 display_name，無法藉此修改角色或他人資料）
+CREATE OR REPLACE FUNCTION public.update_my_display_name(new_name text)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF new_name IS NULL OR length(trim(new_name)) = 0 OR length(trim(new_name)) > 30 THEN
+    RAISE EXCEPTION '暱稱長度需為 1 至 30 個字';
+  END IF;
+  UPDATE public.users_whitelist SET display_name = trim(new_name)
+  WHERE lower(email) = public.current_user_email();
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '您的帳號不在白名單中';
+  END IF;
+END;
+$$;
+REVOKE EXECUTE ON FUNCTION public.update_my_display_name(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.update_my_display_name(text) TO authenticated;
+
+-- 10-2. 移除三張表上所有既有原則（包含第 8 節的公開讀寫原則）
+-- 原則之間是 OR 關係，只要留下任何一條 USING (true) 就等於沒有防護，因此全部清除後重建
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT policyname, tablename FROM pg_policies
+    WHERE schemaname = 'public' AND tablename IN ('users_whitelist', 'categories', 'todos')
+  LOOP
+    EXECUTE format('DROP POLICY %I ON public.%I', r.policyname, r.tablename);
+  END LOOP;
+END $$;
+
+-- 10-3. 白名單：成員可讀取；新增/修改/刪除限管理員
+CREATE POLICY "成員可讀取白名單" ON public.users_whitelist
+  FOR SELECT TO authenticated USING (public.is_whitelisted());
+CREATE POLICY "管理員可新增白名單" ON public.users_whitelist
+  FOR INSERT TO authenticated WITH CHECK (public.is_admin());
+CREATE POLICY "管理員可修改白名單" ON public.users_whitelist
+  FOR UPDATE TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "管理員可刪除白名單" ON public.users_whitelist
+  FOR DELETE TO authenticated USING (public.is_admin());
+
+-- 10-4. 分類：成員可讀取與新增；修改/刪除限管理員
+CREATE POLICY "成員可讀取分類" ON public.categories
+  FOR SELECT TO authenticated USING (public.is_whitelisted());
+CREATE POLICY "成員可新增分類" ON public.categories
+  FOR INSERT TO authenticated WITH CHECK (public.is_whitelisted());
+CREATE POLICY "管理員可修改分類" ON public.categories
+  FOR UPDATE TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());
+CREATE POLICY "管理員可刪除分類" ON public.categories
+  FOR DELETE TO authenticated USING (public.is_admin());
+
+-- 10-5. 待辦：成員可讀寫；新增時建立者必須是本人
+CREATE POLICY "成員可讀取待辦" ON public.todos
+  FOR SELECT TO authenticated USING (public.is_whitelisted());
+CREATE POLICY "成員可新增待辦" ON public.todos
+  FOR INSERT TO authenticated
+  WITH CHECK (public.is_whitelisted() AND lower(created_by) = public.current_user_email());
+CREATE POLICY "成員可修改待辦" ON public.todos
+  FOR UPDATE TO authenticated USING (public.is_whitelisted()) WITH CHECK (public.is_whitelisted());
+CREATE POLICY "成員可刪除待辦" ON public.todos
+  FOR DELETE TO authenticated USING (public.is_whitelisted());
+
+COMMIT;
+
+-- 10-6. 執行後檢查：應列出 12 條原則，且皆為 {authenticated}
+-- SELECT tablename, policyname, roles, cmd FROM pg_policies
+-- WHERE schemaname = 'public' AND tablename IN ('users_whitelist', 'categories', 'todos')
+-- ORDER BY tablename, cmd;
