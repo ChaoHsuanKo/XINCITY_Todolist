@@ -15,7 +15,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <!-- 樣式表 (含防快取版本號) -->
-  <link rel="stylesheet" href="style.css?v=20261001_09">
+  <link rel="stylesheet" href="style.css?v=20261002_01">
 </head>
 <body>
   <!-- 應用程式主容器 -->
@@ -244,7 +244,7 @@
             <input type="text" id="input-new-nickname" class="form-input" placeholder="請輸入您的暱稱或姓名" required maxlength="30">
           </div>
           <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" data-close="modal-edit-nickname">取消</button>
+            <button type="button" class="btn btn-light" data-close="modal-edit-nickname">取消</button>
             <button type="submit" class="btn btn-primary" id="btn-save-nickname">儲存暱稱</button>
           </div>
         </form>
@@ -279,7 +279,7 @@
             </div>
           </div>
           <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" onclick="closeModal('modal-category-manager')">取消</button>
+            <button type="button" class="btn btn-light" onclick="closeModal('modal-category-manager')">取消</button>
             <button type="submit" class="btn btn-primary" id="btn-save-category">建立分類</button>
           </div>
         </form>
@@ -317,7 +317,7 @@
           <div class="modal-actions modal-actions-between">
             <button type="button" class="btn btn-outline-danger" id="btn-delete-category" onclick="handleDeleteCategoryClick()">刪除此分類</button>
             <div style="display:flex; gap:0.5rem;">
-              <button type="button" class="btn btn-secondary" onclick="closeModal('modal-edit-category')">取消</button>
+              <button type="button" class="btn btn-light" onclick="closeModal('modal-edit-category')">取消</button>
               <button type="submit" class="btn btn-primary" id="btn-save-edit-category">儲存變更</button>
             </div>
           </div>
@@ -384,7 +384,7 @@
             <input type="text" id="input-supabase-key" class="form-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
           </div>
           <div class="modal-actions">
-            <button type="button" class="btn btn-secondary" id="btn-reset-to-local">重設為本地模式</button>
+            <button type="button" class="btn btn-light" id="btn-reset-to-local">重設為本地模式</button>
             <button type="submit" class="btn btn-primary" id="btn-save-cloud-config">儲存並連接</button>
           </div>
         </form>
@@ -469,6 +469,6 @@
   <div class="toast-container" id="toast-container"></div>
 
   <!-- 應用程式主邏輯 (含防快取版本號) -->
-  <script src="app.js?v=20261001_09"></script>
+  <script src="app.js?v=20261002_01"></script>
 </body>
 </html>

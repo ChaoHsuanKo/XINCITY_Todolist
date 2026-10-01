@@ -316,6 +316,7 @@ const DataService = {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users_whitelist' }, () => {
         DataService.fetchWhitelist().then(() => {
+          syncCurrentUserFromWhitelist(); // 角色/暱稱變更或被移除時立即生效
           updateAssigneeDropdown();
           renderWhitelistTable();
           renderTodoList(); // 負責人暱稱可能已變更
@@ -567,12 +568,14 @@ const DataService = {
 
   // 新增白名單成員
   async addWhitelistMember(email, displayName, role) {
+    email = email.trim().toLowerCase();
     if (appState.isCloudMode) {
       const { data, error } = await appState.supabaseClient
         .from('users_whitelist')
         .insert([{ email, display_name: displayName, role }])
         .select();
-      if (error) throw error;
+      // 23505 = unique_violation
+      if (error) throw error.code === '23505' ? new Error('此 Email 已經在白名單中') : error;
       return data[0];
     } else {
       const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY));
@@ -635,6 +638,20 @@ function checkExistingAuth() {
   // 尚未登入則彈出登入視窗
   openModal('modal-login');
   renderNavbarAuth(false);
+}
+
+// 白名單變更時同步目前登入者的角色/暱稱；若已被移除則強制登出
+function syncCurrentUserFromWhitelist() {
+  if (!appState.currentUser) return;
+  const latest = appState.whitelist.find(u => u.email.toLowerCase() === appState.currentUser.email.toLowerCase());
+  if (!latest) {
+    handleLogout();
+    showToast('您的帳號已從白名單中移除', 'error');
+    return;
+  }
+  if (latest.role !== appState.currentUser.role || latest.display_name !== appState.currentUser.display_name) {
+    setUserSession(latest);
+  }
 }
 
 function handleLogin(email) {
@@ -871,6 +888,7 @@ function renderTodoList() {
       case 'created_asc':
         return new Date(a.created_at) - new Date(b.created_at);
       case 'due_asc':
+        if (!a.due_date && !b.due_date) return 0;
         if (!a.due_date) return 1;
         if (!b.due_date) return -1;
         return new Date(a.due_date) - new Date(b.due_date);
@@ -1046,7 +1064,7 @@ function renderWhitelistTable() {
       <td>${escapeHtml(user.display_name)}</td>
       <td><span class="badge" style="background:#e2e8f0;">${user.role === 'admin' ? '管理者' : '一般成員'}</span></td>
       <td style="text-align: right;">
-        ${user.email !== appState.currentUser?.email ? `
+        ${appState.currentUser?.role === 'admin' && user.email !== appState.currentUser?.email ? `
           <button type="button" class="btn btn-outline-danger btn-sm" data-email="${escapeHtml(user.email)}">移除</button>
         ` : '<span style="color:#94a3b8; font-size:0.75rem;">當前登入者</span>'}
       </td>
@@ -1095,6 +1113,10 @@ function bindEvents() {
   // 4. 白名單管理 (Admin) - 新增成員
   DOM.formAddWhitelist.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!appState.currentUser || appState.currentUser.role !== 'admin') {
+      showToast('只有系統管理員具備成員管理權限！', 'error');
+      return;
+    }
     const email = DOM.inputNewMemberEmail.value.trim();
     const name = DOM.inputNewMemberName.value.trim();
     const role = DOM.selectNewMemberRole.value;

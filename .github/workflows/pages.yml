@@ -27,10 +27,16 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
+      # 只發布網站必要檔案，避免 .memory 對話紀錄、diagnose.html、schema.sql 等內部檔案公開於網站上
+      - name: Prepare site files
+        run: |
+          mkdir -p _site
+          cp index.html style.css app.js _site/
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '_site'
 
       - name: Deploy to GitHub Pages
         id: deployment
