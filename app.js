@@ -34,10 +34,10 @@ const INITIAL_LOCAL_STATE = {
       id: 't1',
       title: '繳交第三季專案報告',
       category_id: 'c1',
-      assigned_email: 'alex@example.com',
-      due_date: new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 16),
+      assigned_email: 'chaohsuan.ke@gmail.com',
+      due_date: new Date(Date.now() + 86400000 * 2).toISOString(),
       is_completed: false,
-      created_by: 'admin@example.com',
+      created_by: 'chaohsuan.ke@gmail.com',
       created_at: new Date(Date.now() - 3600000 * 4).toISOString()
     },
     {
@@ -45,29 +45,29 @@ const INITIAL_LOCAL_STATE = {
       title: '客戶簡報準備與架構檢視',
       category_id: 'c1',
       assigned_email: 'sarah@example.com',
-      due_date: new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 16),
+      due_date: new Date(Date.now() + 86400000 * 3).toISOString(),
       is_completed: false,
-      created_by: 'alex@example.com',
+      created_by: 'chaohsuan.ke@gmail.com',
       created_at: new Date(Date.now() - 3600000 * 2).toISOString()
     },
     {
       id: 't3',
       title: '團隊週會討論與時程同步',
       category_id: 'c3',
-      assigned_email: 'alex@example.com',
-      due_date: new Date().toISOString().slice(0, 16),
+      assigned_email: 'chaohsuan.ke@gmail.com',
+      due_date: new Date(Date.now() + 3600000 * 3).toISOString(),
       is_completed: false,
-      created_by: 'admin@example.com',
+      created_by: 'chaohsuan.ke@gmail.com',
       created_at: new Date(Date.now() - 3600000 * 1).toISOString()
     },
     {
       id: 't4',
       title: '確認伺服器備份與環境變數設定',
       category_id: 'c2',
-      assigned_email: 'admin@example.com',
-      due_date: new Date(Date.now() - 86400000).toISOString().slice(0, 16),
+      assigned_email: 'chaohsuan.ke@gmail.com',
+      due_date: new Date(Date.now() - 86400000).toISOString(),
       is_completed: true,
-      created_by: 'admin@example.com',
+      created_by: 'chaohsuan.ke@gmail.com',
       created_at: new Date(Date.now() - 86400000 * 2).toISOString()
     }
   ]
@@ -199,10 +199,12 @@ function showToast(message, type = 'success') {
 
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-  toast.innerHTML = `
-    <span>${type === 'success' ? '✓' : '⚠'}</span>
-    <span>${message}</span>
-  `;
+  // 使用 textContent 寫入訊息，避免使用者輸入（分類名稱、暱稱等）造成 XSS
+  const icon = document.createElement('span');
+  icon.textContent = type === 'success' ? '✓' : '⚠';
+  const text = document.createElement('span');
+  text.textContent = message;
+  toast.append(icon, text);
   container.appendChild(toast);
   setTimeout(() => {
     toast.style.opacity = '0';
@@ -222,6 +224,8 @@ const DataService = {
     const savedConfig = localStorage.getItem(CONFIG_STORAGE_KEY);
     if (savedConfig) {
       try { cloudConfig = JSON.parse(savedConfig); } catch (e) {}
+      // 使用者明確選擇「重設為本地模式」時，不套用預設雲端設定
+      if (cloudConfig && cloudConfig.mode === 'local') cloudConfig = null;
     } else if (DEFAULT_SUPABASE_CONFIG.url && DEFAULT_SUPABASE_CONFIG.key) {
       cloudConfig = DEFAULT_SUPABASE_CONFIG;
     }
@@ -248,15 +252,26 @@ const DataService = {
     try {
       await this.fetchData();
     } catch (fetchErr) {
-      console.error('[DataService] fetchData 失敗，嘗試使用本地快取:', fetchErr);
-      // 如果雲端抓取失敗，嘗試用本地資料補救
-      if (appState.whitelist.length === 0) {
-        const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY) || '{}');
-        appState.whitelist = local.whitelist || INITIAL_LOCAL_STATE.whitelist;
-        appState.categories = local.categories || INITIAL_LOCAL_STATE.categories;
-        appState.todos = local.todos || INITIAL_LOCAL_STATE.todos;
-      }
+      if (!appState.isCloudMode) throw fetchErr;
+      console.error('[DataService] 雲端資料讀取失敗，降級為本地模式:', fetchErr);
+      await this.fallbackToLocal();
+      showToast('雲端資料庫連線失敗，已暫時切換為本地模式', 'error');
     }
+  },
+
+  // 雲端無法使用時，完整切換為本地模式（避免雲端/本地資料混用）
+  async fallbackToLocal() {
+    if (appState.supabaseClient && appState.realtimeSubscription) {
+      appState.supabaseClient.removeChannel(appState.realtimeSubscription);
+    }
+    appState.realtimeSubscription = null;
+    appState.supabaseClient = null;
+    appState.isCloudMode = false;
+    if (!localStorage.getItem(LOCAL_DATA_KEY)) {
+      localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(INITIAL_LOCAL_STATE));
+    }
+    this.updateModeIndicator();
+    await this.fetchData();
   },
 
   updateModeIndicator() {
@@ -280,19 +295,23 @@ const DataService = {
     appState.realtimeSubscription = appState.supabaseClient
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'todos' }, () => {
-        DataService.fetchTodos().then(renderTodoList);
+        DataService.fetchTodos().then(() => {
+          renderTodoList();
+          renderCategories(); // 同步更新側邊欄分類計數
+        }).catch(err => console.error('[Realtime] 重新讀取待辦失敗:', err));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => {
         DataService.fetchCategories().then(() => {
           renderCategories();
           renderTodoList();
-        });
+        }).catch(err => console.error('[Realtime] 重新讀取分類失敗:', err));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users_whitelist' }, () => {
         DataService.fetchWhitelist().then(() => {
           updateAssigneeDropdown();
           renderWhitelistTable();
-        });
+          renderTodoList(); // 負責人暱稱可能已變更
+        }).catch(err => console.error('[Realtime] 重新讀取白名單失敗:', err));
       })
       .subscribe();
   },
@@ -310,7 +329,8 @@ const DataService = {
   async fetchWhitelist() {
     if (appState.isCloudMode) {
       const { data, error } = await appState.supabaseClient.from('users_whitelist').select('*');
-      if (!error && data) appState.whitelist = data;
+      if (error) throw error;
+      appState.whitelist = data || [];
     } else {
       const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY) || '{}');
       appState.whitelist = local.whitelist || [];
@@ -321,7 +341,8 @@ const DataService = {
   async fetchCategories() {
     if (appState.isCloudMode) {
       const { data, error } = await appState.supabaseClient.from('categories').select('*');
-      if (!error && data) appState.categories = data;
+      if (error) throw error;
+      appState.categories = data || [];
     } else {
       const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY) || '{}');
       appState.categories = local.categories || [];
@@ -332,7 +353,8 @@ const DataService = {
   async fetchTodos() {
     if (appState.isCloudMode) {
       const { data, error } = await appState.supabaseClient.from('todos').select('*');
-      if (!error && data) appState.todos = data;
+      if (error) throw error;
+      appState.todos = data || [];
     } else {
       const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY) || '{}');
       appState.todos = local.todos || [];
@@ -675,12 +697,12 @@ function renderCategories() {
     li.className = `category-item ${appState.selectedCategory === cat.id ? 'active' : ''}`;
     li.innerHTML = `
       <div class="cat-label-group">
-        <span class="cat-dot" style="background: ${cat.color};"></span>
+        <span class="cat-dot" style="background: ${safeColor(cat.color)};"></span>
         <span>${escapeHtml(cat.name)}</span>
       </div>
       <div class="cat-right-group">
         ${isAdmin ? `
-          <button type="button" class="btn-cat-action btn-cat-edit" title="修改分類 (管理者專用)" data-cat-id="${cat.id}">
+          <button type="button" class="btn-cat-action btn-cat-edit" title="修改分類 (管理者專用)" data-cat-id="${escapeHtml(cat.id)}">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
@@ -760,15 +782,20 @@ function updateAssigneeDropdown() {
 function formatDueDate(dueString) {
   if (!dueString) return null;
   const dueDate = new Date(dueString);
+  if (isNaN(dueDate.getTime())) return null;
   const now = new Date();
-  
-  const diffDays = Math.ceil((dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+  // 以「日曆日」計算相差天數，避免以 24 小時區間誤判（例如明天到期被標為今天）
+  const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(dueDate) - startOfDay(now)) / (1000 * 60 * 60 * 24));
   const dateFormatted = dueDate.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  if (diffDays < 0) {
+  if (dueDate < now) {
     return { text: `已逾期 (${dateFormatted})`, className: 'overdue' };
-  } else if (diffDays === 0 || diffDays === 1) {
+  } else if (diffDays === 0) {
     return { text: `今天到期 (${dateFormatted})`, className: 'urgent-today' };
+  } else if (diffDays === 1) {
+    return { text: `明天到期 (${dateFormatted})`, className: '' };
   } else {
     return { text: `截止：${dateFormatted}`, className: '' };
   }
@@ -799,9 +826,9 @@ function renderTodoList() {
   if (appState.searchQuery.trim()) {
     const query = appState.searchQuery.trim().toLowerCase();
     list = list.filter(t => {
-      const matchTitle = t.title.toLowerCase().includes(query);
+      const matchTitle = (t.title || '').toLowerCase().includes(query);
       const assignee = appState.whitelist.find(u => u.email === t.assigned_email);
-      const matchAssignee = assignee && (assignee.display_name.toLowerCase().includes(query) || assignee.email.toLowerCase().includes(query));
+      const matchAssignee = assignee && ((assignee.display_name || '').toLowerCase().includes(query) || (assignee.email || '').toLowerCase().includes(query));
       return matchTitle || matchAssignee;
     });
   }
@@ -855,14 +882,16 @@ function renderTodoList() {
 
     // 分類資訊
     const category = appState.categories.find(c => c.id === todo.category_id);
+    const catColor = category ? safeColor(category.color) : '';
     const categoryHtml = category ? `
-      <span class="badge-category" style="background-color: ${category.color}15; color: ${category.color}; border: 1px solid ${category.color}40;">
-        <span class="cat-dot" style="background: ${category.color}; width:6px; height:6px;"></span>
+      <span class="badge-category" style="background-color: ${catColor}15; color: ${catColor}; border: 1px solid ${catColor}40;">
+        <span class="cat-dot" style="background: ${catColor}; width:6px; height:6px;"></span>
         ${escapeHtml(category.name)}
       </span>
     ` : '';
 
     // 負責人資訊
+    const assignee = appState.whitelist.find(u => u.email === todo.assigned_email);
     const assigneeName = assignee ? (assignee.display_name || assignee.email.split('@')[0] || '成員') : '';
     const assigneeHtml = assignee ? `
       <span class="assignee-badge" title="負責人: ${escapeHtml(assigneeName)} (${escapeHtml(assignee.email || '')})">
@@ -881,7 +910,7 @@ function renderTodoList() {
 
     card.innerHTML = `
       <div class="todo-left-main">
-        <button type="button" class="custom-checkbox-btn" aria-label="切換完成狀態" id="checkbox-${todo.id}">
+        <button type="button" class="custom-checkbox-btn" aria-label="切換完成狀態">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="20 6 9 17 4 12"></polyline>
           </svg>
@@ -892,7 +921,7 @@ function renderTodoList() {
         ${categoryHtml}
         ${assigneeHtml}
         ${dueHtml}
-        <button type="button" class="btn-card-delete" title="刪除此任務" aria-label="刪除任務" id="btn-del-${todo.id}">
+        <button type="button" class="btn-card-delete" title="刪除此任務" aria-label="刪除任務">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -902,7 +931,7 @@ function renderTodoList() {
     `;
 
     // 綁定 Checkbox 打勾事件
-    const checkboxBtn = card.querySelector(`#checkbox-${todo.id}`);
+    const checkboxBtn = card.querySelector('.custom-checkbox-btn');
     checkboxBtn.addEventListener('click', async () => {
       try {
         const nextStatus = !todo.is_completed;
@@ -917,7 +946,7 @@ function renderTodoList() {
     });
 
     // 綁定刪除事件
-    const delBtn = card.querySelector(`#btn-del-${todo.id}`);
+    const delBtn = card.querySelector('.btn-card-delete');
     delBtn.addEventListener('click', async () => {
       if (confirm(`確定要刪除「${todo.title}」嗎？`)) {
         try {
@@ -946,7 +975,7 @@ function renderWhitelistTable() {
       <td><span class="badge" style="background:#e2e8f0;">${user.role === 'admin' ? '管理者' : '一般成員'}</span></td>
       <td style="text-align: right;">
         ${user.email !== appState.currentUser?.email ? `
-          <button type="button" class="btn btn-outline-danger btn-sm" data-email="${user.email}">移除</button>
+          <button type="button" class="btn btn-outline-danger btn-sm" data-email="${escapeHtml(user.email)}">移除</button>
         ` : '<span style="color:#94a3b8; font-size:0.75rem;">當前登入者</span>'}
       </td>
     `;
@@ -984,146 +1013,14 @@ function bindEvents() {
     }
   });
 
-  // 登出按鈕
-  DOM.btnLogout.addEventListener('click', handleLogout);
+  // 開啟登入視窗
   DOM.btnOpenLogin.addEventListener('click', () => openModal('modal-login'));
 
-  // 2. 修改暱稱
-  if (DOM.btnOpenEditNickname) {
-    DOM.btnOpenEditNickname.addEventListener('click', () => {
-      openEditNicknameModal();
-    });
-  }
+  // 注意：登出、修改暱稱、新增/修改/刪除分類、開啟成員管理、開啟雲端設定
+  // 皆已由 index.html 的 onclick / onsubmit 呼叫下方 window.* 全域函式處理，
+  // 此處不可再以 addEventListener 重複綁定，否則會造成同一動作執行兩次（例如分類重複建立）。
 
-  // 支援點擊個人資訊卡片直接修改暱稱
-  const profileChip = document.getElementById('user-profile-chip');
-  if (profileChip) {
-    profileChip.addEventListener('click', () => {
-      openEditNicknameModal();
-    });
-  }
-
-  if (DOM.formEditNickname) {
-    DOM.formEditNickname.addEventListener('submit', (e) => {
-      handleEditNicknameSubmit(e);
-    });
-  }
-
-  // 3. 新增分類
-  DOM.btnAddCategory.addEventListener('click', () => {
-    if (!appState.currentUser) {
-      showToast('請先登入後再建立分類', 'error');
-      openModal('modal-login');
-      return;
-    }
-    openModal('modal-category-manager');
-  });
-
-  DOM.formCreateCategory.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const name = DOM.inputCategoryName.value.trim();
-    const checkedColor = document.querySelector('input[name="cat-color"]:checked')?.value || '#3b82f6';
-    if (!name) return;
-
-    const submitBtn = DOM.formCreateCategory.querySelector('button[type="submit"]');
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.textContent = '建立中...';
-    }
-
-    try {
-      await DataService.addCategory(name, checkedColor);
-      renderCategories();
-      renderTodoList();
-      closeModal('modal-category-manager');
-      DOM.formCreateCategory.reset();
-      showToast(`已成功建立分類「${name}」！`, 'success');
-    } catch (err) {
-      console.error('建立分類失敗:', err);
-      showToast(`建立分類失敗: ${err.message || '請確認網路連線'}`, 'error');
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = '建立分類';
-      }
-    }
-  });
-
-  // 3-1. 修改分類 (僅限管理者)
-  DOM.formEditCategory.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    if (!appState.currentUser || appState.currentUser.role !== 'admin') {
-      showToast('權限不足：僅有系統管理員可修改分類！', 'error');
-      return;
-    }
-
-    const catId = DOM.inputEditCategoryId.value;
-    const name = DOM.inputEditCategoryName.value.trim();
-    const checkedColor = document.querySelector('input[name="edit-cat-color"]:checked')?.value || '#3b82f6';
-    if (!catId || !name) return;
-
-    const submitBtn = DOM.formEditCategory.querySelector('button[type="submit"]');
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.textContent = '儲存中...';
-    }
-
-    try {
-      await DataService.updateCategory(catId, name, checkedColor);
-      if (appState.selectedCategory === catId) {
-        DOM.currentCategoryIndicator.textContent = name;
-      }
-      renderCategories();
-      renderTodoList();
-      closeModal('modal-edit-category');
-      showToast(`已成功更新分類「${name}」！`, 'success');
-    } catch (err) {
-      console.error('修改分類失敗:', err);
-      showToast(`修改分類失敗: ${err.message || '請確認網路連線'}`, 'error');
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.textContent = '儲存變更';
-      }
-    }
-  });
-
-  // 刪除分類 (僅限管理者)
-  DOM.btnDeleteCategory.addEventListener('click', async () => {
-    if (!appState.currentUser || appState.currentUser.role !== 'admin') {
-      showToast('權限不足：僅有系統管理員可刪除分類！', 'error');
-      return;
-    }
-
-    const catId = DOM.inputEditCategoryId.value;
-    const currentCat = appState.categories.find(c => c.id === catId);
-    const catName = currentCat ? currentCat.name : '此分類';
-
-    if (!confirm(`確定要刪除「${catName}」分類嗎？\n刪除後，原本屬於該分類的待辦事項將自動變更為「未分類」。`)) {
-      return;
-    }
-
-    DOM.btnDeleteCategory.disabled = true;
-    try {
-      await DataService.deleteCategory(catId);
-      renderCategories();
-      renderTodoList();
-      closeModal('modal-edit-category');
-      showToast(`已成功刪除分類「${catName}」`, 'success');
-    } catch (err) {
-      console.error('刪除分類失敗:', err);
-      showToast(`刪除分類失敗: ${err.message || '請確認網路連線'}`, 'error');
-    } finally {
-      DOM.btnDeleteCategory.disabled = false;
-    }
-  });
-
-  // 4. 白名單管理 (Admin)
-  DOM.btnOpenWhitelist.addEventListener('click', () => {
-    renderWhitelistTable();
-    openModal('modal-whitelist-manager');
-  });
-
+  // 4. 白名單管理 (Admin) - 新增成員
   DOM.formAddWhitelist.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = DOM.inputNewMemberEmail.value.trim();
@@ -1142,16 +1039,6 @@ function bindEvents() {
   });
 
   // 5. 雲端設定 (Supabase Config)
-  DOM.btnOpenCloudConfig.addEventListener('click', () => {
-    const savedConfig = localStorage.getItem(CONFIG_STORAGE_KEY);
-    if (savedConfig) {
-      const { url, key } = JSON.parse(savedConfig);
-      DOM.inputSupabaseUrl.value = url || '';
-      DOM.inputSupabaseKey.value = key || '';
-    }
-    openModal('modal-cloud-config');
-  });
-
   DOM.formCloudConfig.addEventListener('submit', (e) => {
     e.preventDefault();
     const url = DOM.inputSupabaseUrl.value.trim();
@@ -1165,7 +1052,8 @@ function bindEvents() {
   });
 
   DOM.btnResetToLocal.addEventListener('click', () => {
-    localStorage.removeItem(CONFIG_STORAGE_KEY);
+    // 寫入本地模式旗標（若僅刪除設定，重新載入後會自動套用 DEFAULT_SUPABASE_CONFIG 又連回雲端）
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify({ mode: 'local' }));
     showToast('已重設為本地測試模式，重新載入中...', 'success');
     setTimeout(() => window.location.reload(), 1200);
   });
@@ -1184,7 +1072,8 @@ function bindEvents() {
 
     const categoryId = DOM.selectTodoCategory.value || null;
     const assignedEmail = DOM.selectTodoAssignee.value || null;
-    const dueDate = DOM.inputTodoDue.value || null;
+    // datetime-local 值不含時區，需轉為 ISO 字串，否則資料庫會以 UTC 解讀而差 8 小時
+    const dueDate = localInputToISO(DOM.inputTodoDue.value);
 
     try {
       await DataService.addTodo({
@@ -1498,6 +1387,18 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+// 輔助函式：驗證分類顏色為合法 Hex 色碼，避免惡意字串注入 style 屬性
+function safeColor(color) {
+  return /^#[0-9a-fA-F]{6}$/.test(color || '') ? color : '#94a3b8';
+}
+
+// 輔助函式：將 datetime-local 輸入值（本地時間、無時區）轉為帶時區的 ISO 字串
+function localInputToISO(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 // ==========================================
