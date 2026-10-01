@@ -85,7 +85,6 @@ const appState = {
   currentUser: null,           // 當前登入的使用者資訊
   isCloudMode: false,          // 是否連接至 Supabase
   supabaseClient: null,        // Supabase 客戶端實例
-  authSession: null,           // 雲端模式：Supabase Auth 登入工作階段（Google 登入）
   realtimeSubscription: null,  // 即時監聽頻道
   
   // 記憶體中資料快取
@@ -242,7 +241,6 @@ const DataService = {
       try {
         appState.supabaseClient = window.supabase.createClient(cloudConfig.url, cloudConfig.key);
         appState.isCloudMode = true;
-        await this.initAuth();
         this.setupRealtime();
       } catch (err) {
         console.error('雲端資料庫連線失敗，降級為本地模式', err);
@@ -268,22 +266,6 @@ const DataService = {
     }
   },
 
-  // 雲端模式：取得 Supabase Auth 工作階段（Google 登入導回時會自動解析網址中的憑證）
-  async initAuth() {
-    const { data, error } = await appState.supabaseClient.auth.getSession();
-    if (error) console.error('[Auth] 取得登入工作階段失敗:', error);
-    appState.authSession = data?.session || null;
-
-    // 監聽登入狀態：Token 更新時同步工作階段；其他分頁登出或工作階段失效時同步登出
-    // 注意：此回呼內不可 await 其他 supabase 呼叫，否則可能造成死結
-    appState.supabaseClient.auth.onAuthStateChange((event, session) => {
-      appState.authSession = session;
-      if (event === 'SIGNED_OUT' && appState.currentUser) {
-        handleLogout();
-      }
-    });
-  },
-
   // 雲端無法使用時，完整切換為本地模式（避免雲端/本地資料混用）
   async fallbackToLocal() {
     if (appState.supabaseClient && appState.realtimeSubscription) {
@@ -295,18 +277,11 @@ const DataService = {
     if (!localStorage.getItem(LOCAL_DATA_KEY)) {
       localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(INITIAL_LOCAL_STATE));
     }
-    appState.authSession = null;
     this.updateModeIndicator();
     await this.fetchData();
   },
 
   updateModeIndicator() {
-    // 登入視窗依模式切換：雲端用 Google 登入，本地用 Email
-    const cloudSection = document.getElementById('login-cloud-section');
-    const localSection = document.getElementById('login-local-section');
-    if (cloudSection) cloudSection.classList.toggle('hidden', !appState.isCloudMode);
-    if (localSection) localSection.classList.toggle('hidden', appState.isCloudMode);
-
     if (appState.isCloudMode) {
       DOM.statusBadge.textContent = '雲端即時連線中';
       DOM.statusBadge.className = 'badge-status-mode online';
@@ -574,15 +549,10 @@ const DataService = {
   // 更新使用者暱稱
   async updateUserNickname(email, newDisplayName) {
     if (appState.isCloudMode) {
-      // 透過資料庫函式只修改自己的暱稱（RLS 下一般成員無法直接更新白名單表）
-      let { error } = await appState.supabaseClient.rpc('update_my_display_name', { new_name: newDisplayName });
-      // PGRST202 = 函式不存在（尚未執行 schema.sql 第 10 節），暫時退回直接更新
-      if (error && error.code === 'PGRST202') {
-        ({ error } = await appState.supabaseClient
-          .from('users_whitelist')
-          .update({ display_name: newDisplayName })
-          .eq('email', email));
-      }
+      const { error } = await appState.supabaseClient
+        .from('users_whitelist')
+        .update({ display_name: newDisplayName })
+        .eq('email', email);
       if (error) throw error;
       const target = appState.whitelist.find(u => u.email.toLowerCase() === email.toLowerCase());
       if (target) {
@@ -641,26 +611,6 @@ function checkExistingAuth() {
   console.log('[Auth] 開始檢查已存在的身份驗證...');
   console.log('[Auth] 白名單中共有', appState.whitelist.length, '位成員');
 
-  // 雲端模式：身分以 Supabase Auth（Google 登入）為準，localStorage 內容可被竄改故不採信
-  if (appState.isCloudMode) {
-    const email = appState.authSession?.user?.email;
-    if (email) {
-      const verified = appState.whitelist.find(u => u.email.toLowerCase() === email.toLowerCase());
-      if (verified) {
-        console.log('[Auth] Google 登入且白名單驗證通過，角色:', verified.role);
-        setUserSession(verified);
-        return;
-      }
-      console.warn('[Auth] Google 帳號不在白名單中:', email);
-      showToast(`此 Google 帳號（${email}）未列入團隊白名單，請聯絡管理員`, 'error');
-      appState.supabaseClient.auth.signOut().catch(err => console.error('[Auth] 登出失敗:', err));
-      appState.authSession = null;
-    }
-    openModal('modal-login');
-    renderNavbarAuth(false);
-    return;
-  }
-
   const savedUserJson = sessionStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem(AUTH_STORAGE_KEY);
   if (savedUserJson) {
     console.log('[Auth] 發現儲存的身份資料');
@@ -704,12 +654,7 @@ function syncCurrentUserFromWhitelist() {
   }
 }
 
-// 本地體驗模式專用：輸入白名單 Email 即登入（雲端模式改用 Google 登入）
 function handleLogin(email) {
-  if (appState.isCloudMode) {
-    showToast('雲端模式請使用 Google 帳號登入', 'error');
-    return false;
-  }
   const targetEmail = email.trim().toLowerCase();
   const user = appState.whitelist.find(u => u.email.toLowerCase() === targetEmail);
 
@@ -730,48 +675,10 @@ function setUserSession(user) {
   renderNavbarAuth(true);
 }
 
-// 雲端模式：導向 Google 登入，完成後會導回本頁並由 initAuth() 取得工作階段
-window.handleGoogleLogin = async function() {
-  if (!appState.isCloudMode || !appState.supabaseClient) {
-    showToast('目前為本地體驗模式，請直接輸入 Email 登入', 'error');
-    return;
-  }
-  const btn = document.getElementById('btn-login-google');
-  if (btn) btn.disabled = true;
-  const { error } = await appState.supabaseClient.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: window.location.origin + window.location.pathname,
-      queryParams: { prompt: 'select_account' } // 每次都讓使用者選擇帳號，方便切換
-    }
-  });
-  if (error) {
-    console.error('[Auth] Google 登入失敗:', error);
-    showToast(`Google 登入失敗：${error.message || '請確認 Supabase 已啟用 Google 登入'}`, 'error');
-    if (btn) btn.disabled = false;
-  }
-};
-
 function handleLogout() {
   appState.currentUser = null;
   localStorage.removeItem(AUTH_STORAGE_KEY);
   sessionStorage.removeItem(AUTH_STORAGE_KEY);
-
-  if (appState.isCloudMode) {
-    // 登出 Supabase Auth，並清除畫面上的雲端資料（登出後已無讀取權限）
-    if (appState.authSession) {
-      appState.authSession = null;
-      appState.supabaseClient.auth.signOut().catch(err => console.error('[Auth] 登出失敗:', err));
-    }
-    appState.whitelist = [];
-    appState.categories = [];
-    appState.todos = [];
-    closeModal('modal-todo-detail');
-    closeModal('modal-whitelist-manager');
-    updateAssigneeDropdown();
-    renderTodoList();
-  }
-
   renderNavbarAuth(false);
   openModal('modal-login');
   showToast('已安全登出系統', 'success');

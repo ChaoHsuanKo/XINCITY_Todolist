@@ -1018,24 +1018,6 @@ input:checked + .slider:before {
   background: #e2e8f0;
 }
 
-/* Google 登入按鈕（依 Google 品牌規範：白底、灰框、深色文字） */
-.btn-google {
-  background: #fff;
-  color: #1f1f1f;
-  border-color: #747775;
-  font-weight: 500;
-}
-
-.btn-google:hover {
-  background: #f8fafc;
-  box-shadow: var(--shadow-sm);
-}
-
-.btn-google:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
-
 /* 任務詳情視窗 */
 .modal-todo-detail {
   max-height: 90vh;
