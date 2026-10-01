@@ -71,3 +71,11 @@ CREATE POLICY "允許所有人維護分類" ON public.categories FOR ALL USING (
 
 CREATE POLICY "允許所有人讀取待辦" ON public.todos FOR SELECT USING (true);
 CREATE POLICY "允許所有人維護待辦" ON public.todos FOR ALL USING (true);
+
+-- ==========================================
+-- 9. 任務詳情擴充欄位 (2026-10-01 新增)
+-- 若資料庫已建立，請在 SQL Editor 單獨執行以下指令即可完成升級
+-- ==========================================
+ALTER TABLE public.todos ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE public.todos ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high'));
+ALTER TABLE public.todos ADD COLUMN IF NOT EXISTS subtasks JSONB NOT NULL DEFAULT '[]'::jsonb;

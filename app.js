@@ -73,6 +73,13 @@ const INITIAL_LOCAL_STATE = {
   ]
 };
 
+// 任務優先度選項
+const PRIORITY_OPTIONS = {
+  high: { label: '🔴 高', rank: 0 },
+  normal: { label: '一般', rank: 1 },
+  low: { label: '🔵 低', rank: 2 }
+};
+
 // 狀態管理物件
 const appState = {
   currentUser: null,           // 當前登入的使用者資訊
@@ -89,7 +96,7 @@ const appState = {
   selectedCategory: 'all',     // 'all' 或分類 ID
   selectedStatus: 'all',       // 'all', 'active', 'completed'
   hideCompleted: false,        // 是否隱藏已完成事項
-  sortBy: 'created_desc',      // 'created_desc', 'created_asc', 'due_asc', 'category', 'assignee'
+  sortBy: 'created_desc',      // 'created_desc', 'created_asc', 'due_asc', 'priority', 'category', 'assignee'
   searchQuery: ''              // 關鍵字搜尋
 };
 
@@ -298,6 +305,7 @@ const DataService = {
         DataService.fetchTodos().then(() => {
           renderTodoList();
           renderCategories(); // 同步更新側邊欄分類計數
+          syncTodoDetailFromRemote(); // 若詳情面板開啟中，同步最新內容
         }).catch(err => console.error('[Realtime] 重新讀取待辦失敗:', err));
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'categories' }, () => {
@@ -400,6 +408,29 @@ const DataService = {
       localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(local));
       appState.todos = local.todos;
       return newTodo;
+    }
+  },
+
+  // 更新待辦事項詳細內容（標題、說明、分類、負責人、截止時間、優先度、子任務）
+  async updateTodo(todoId, updates) {
+    if (appState.isCloudMode) {
+      const { data, error } = await appState.supabaseClient
+        .from('todos')
+        .update(updates)
+        .eq('id', todoId)
+        .select();
+      if (error) throw error;
+      const idx = appState.todos.findIndex(t => t.id === todoId);
+      if (idx !== -1 && data && data[0]) {
+        appState.todos[idx] = data[0];
+      }
+      return data ? data[0] : null;
+    } else {
+      const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY));
+      local.todos = local.todos.map(t => t.id === todoId ? { ...t, ...updates } : t);
+      localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(local));
+      appState.todos = local.todos;
+      return local.todos.find(t => t.id === todoId);
     }
   },
 
@@ -826,7 +857,8 @@ function renderTodoList() {
   if (appState.searchQuery.trim()) {
     const query = appState.searchQuery.trim().toLowerCase();
     list = list.filter(t => {
-      const matchTitle = (t.title || '').toLowerCase().includes(query);
+      const matchTitle = (t.title || '').toLowerCase().includes(query)
+        || (t.description || '').toLowerCase().includes(query);
       const assignee = appState.whitelist.find(u => u.email === t.assigned_email);
       const matchAssignee = assignee && ((assignee.display_name || '').toLowerCase().includes(query) || (assignee.email || '').toLowerCase().includes(query));
       return matchTitle || matchAssignee;
@@ -842,6 +874,11 @@ function renderTodoList() {
         if (!a.due_date) return 1;
         if (!b.due_date) return -1;
         return new Date(a.due_date) - new Date(b.due_date);
+      case 'priority': {
+        const rankA = (PRIORITY_OPTIONS[a.priority] || PRIORITY_OPTIONS.normal).rank;
+        const rankB = (PRIORITY_OPTIONS[b.priority] || PRIORITY_OPTIONS.normal).rank;
+        return rankA - rankB;
+      }
       case 'category':
         const catA = appState.categories.find(c => c.id === a.category_id)?.name || '';
         const catB = appState.categories.find(c => c.id === b.category_id)?.name || '';
@@ -908,6 +945,24 @@ function renderTodoList() {
       </span>
     ` : '';
 
+    // 優先度資訊（一般優先度不顯示，避免畫面雜亂）
+    const priorityInfo = PRIORITY_OPTIONS[todo.priority];
+    const priorityHtml = priorityInfo && todo.priority !== 'normal' ? `
+      <span class="priority-badge priority-${todo.priority}">${priorityInfo.label}</span>
+    ` : '';
+
+    // 詳情指示：說明備註與子任務進度
+    const subtasks = Array.isArray(todo.subtasks) ? todo.subtasks : [];
+    const doneSubtasks = subtasks.filter(s => s.done).length;
+    const subtaskHtml = subtasks.length ? `
+      <span class="detail-indicator ${doneSubtasks === subtasks.length ? 'all-done' : ''}" title="子任務進度">
+        ☑ ${doneSubtasks}/${subtasks.length}
+      </span>
+    ` : '';
+    const noteHtml = todo.description && todo.description.trim() ? `
+      <span class="detail-indicator" title="此任務有詳細說明">📝</span>
+    ` : '';
+
     card.innerHTML = `
       <div class="todo-left-main">
         <button type="button" class="custom-checkbox-btn" aria-label="切換完成狀態">
@@ -918,6 +973,9 @@ function renderTodoList() {
         <span class="todo-title-text" title="${escapeHtml(todo.title)}">${escapeHtml(todo.title)}</span>
       </div>
       <div class="todo-right-meta">
+        ${priorityHtml}
+        ${noteHtml}
+        ${subtaskHtml}
         ${categoryHtml}
         ${assigneeHtml}
         ${dueHtml}
@@ -932,7 +990,8 @@ function renderTodoList() {
 
     // 綁定 Checkbox 打勾事件
     const checkboxBtn = card.querySelector('.custom-checkbox-btn');
-    checkboxBtn.addEventListener('click', async () => {
+    checkboxBtn.addEventListener('click', async (e) => {
+      e.stopPropagation(); // 避免同時觸發開啟詳情
       try {
         const nextStatus = !todo.is_completed;
         await DataService.toggleTodoStatus(todo.id, nextStatus);
@@ -947,7 +1006,8 @@ function renderTodoList() {
 
     // 綁定刪除事件
     const delBtn = card.querySelector('.btn-card-delete');
-    delBtn.addEventListener('click', async () => {
+    delBtn.addEventListener('click', async (e) => {
+      e.stopPropagation(); // 避免同時觸發開啟詳情
       if (confirm(`確定要刪除「${todo.title}」嗎？`)) {
         try {
           await DataService.deleteTodo(todo.id);
@@ -957,6 +1017,18 @@ function renderTodoList() {
         } catch (err) {
           showToast('刪除失敗', 'error');
         }
+      }
+    });
+
+    // 點擊卡片其餘區域：開啟任務詳情
+    card.classList.add('clickable');
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.addEventListener('click', () => openTodoDetail(todo.id));
+    card.addEventListener('keydown', (e) => {
+      if (e.target === card && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        openTodoDetail(todo.id);
       }
     });
 
@@ -1122,6 +1194,24 @@ function bindEvents() {
     appState.searchQuery = e.target.value;
     renderTodoList();
   });
+
+  // 10-1. 任務詳情面板：任何欄位變動即標記為未儲存，避免即時同步覆蓋使用者正在編輯的內容
+  const formTodoDetail = document.getElementById('form-todo-detail');
+  if (formTodoDetail) {
+    formTodoDetail.addEventListener('input', () => { todoDetailState.dirty = true; });
+    formTodoDetail.addEventListener('change', () => { todoDetailState.dirty = true; });
+  }
+
+  // 子任務輸入框按 Enter：新增子任務而非送出整個表單
+  const subtaskInput = document.getElementById('detail-subtask-input');
+  if (subtaskInput) {
+    subtaskInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        window.handleAddSubtask();
+      }
+    });
+  }
 
   // 11. 關閉彈跳視窗共用處理
   document.querySelectorAll('[data-close]').forEach(btn => {
@@ -1377,6 +1467,236 @@ window.handleDeleteCategoryClick = async function() {
     if (btn) btn.disabled = false;
   }
 };
+
+// ==========================================
+// 任務詳情面板 (Todo Detail)
+// ==========================================
+// 詳情面板編輯狀態：目前開啟的任務 ID、子任務草稿、是否有未儲存變更
+const todoDetailState = {
+  todoId: null,
+  subtasks: [],
+  dirty: false
+};
+
+// 輔助函式：將 ISO 時間字串轉為 datetime-local 輸入框可用的本地時間格式
+function isoToLocalInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// 輔助函式：格式化完整日期時間（詳情面板中繼資訊用）
+function formatDateTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('zh-TW', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+// 開啟任務詳情面板並填入資料
+function openTodoDetail(todoId) {
+  const todo = appState.todos.find(t => t.id === todoId);
+  if (!todo) {
+    showToast('找不到此任務，可能已被刪除', 'error');
+    return;
+  }
+  todoDetailState.todoId = todoId;
+  fillTodoDetailForm(todo);
+  openModal('modal-todo-detail');
+}
+window.openTodoDetail = openTodoDetail;
+
+// 將任務資料填入詳情表單
+function fillTodoDetailForm(todo) {
+  // 分類下拉選單
+  const catSelect = document.getElementById('detail-todo-category');
+  catSelect.innerHTML = '<option value="">未分類</option>';
+  appState.categories.forEach(cat => {
+    const opt = document.createElement('option');
+    opt.value = cat.id;
+    opt.textContent = cat.name;
+    catSelect.appendChild(opt);
+  });
+
+  // 負責人下拉選單
+  const assigneeSelect = document.getElementById('detail-todo-assignee');
+  assigneeSelect.innerHTML = '<option value="">未指派</option>';
+  appState.whitelist.forEach(user => {
+    const opt = document.createElement('option');
+    opt.value = user.email;
+    opt.textContent = `${user.display_name} (${user.email})`;
+    assigneeSelect.appendChild(opt);
+  });
+
+  document.getElementById('detail-todo-title').value = todo.title || '';
+  document.getElementById('detail-todo-description').value = todo.description || '';
+  catSelect.value = todo.category_id || '';
+  assigneeSelect.value = todo.assigned_email || '';
+  document.getElementById('detail-todo-due').value = isoToLocalInput(todo.due_date);
+  document.getElementById('detail-todo-priority').value = PRIORITY_OPTIONS[todo.priority] ? todo.priority : 'normal';
+  document.getElementById('detail-todo-completed').checked = !!todo.is_completed;
+
+  // 子任務草稿（深拷貝，取消時不影響原資料）
+  todoDetailState.subtasks = (Array.isArray(todo.subtasks) ? todo.subtasks : []).map(s => ({ ...s }));
+  renderDetailSubtasks();
+
+  // 中繼資訊：建立者、建立時間、完成時間
+  const creator = appState.whitelist.find(u => u.email === todo.created_by);
+  const creatorName = creator ? creator.display_name : (todo.created_by || '未知');
+  let metaText = `由 ${creatorName} 建立於 ${formatDateTime(todo.created_at)}`;
+  if (todo.is_completed && todo.completed_at) {
+    metaText += ` ・ 完成於 ${formatDateTime(todo.completed_at)}`;
+  }
+  document.getElementById('detail-todo-meta').textContent = metaText;
+
+  todoDetailState.dirty = false;
+}
+
+// 渲染子任務清單
+function renderDetailSubtasks() {
+  const listEl = document.getElementById('detail-subtask-list');
+  const progressEl = document.getElementById('detail-subtask-progress');
+  const subtasks = todoDetailState.subtasks;
+  const doneCount = subtasks.filter(s => s.done).length;
+
+  progressEl.textContent = subtasks.length ? `${doneCount}/${subtasks.length}` : '';
+  listEl.innerHTML = '';
+
+  subtasks.forEach((sub, index) => {
+    const li = document.createElement('li');
+    li.className = `subtask-item ${sub.done ? 'done' : ''}`;
+    li.innerHTML = `
+      <label class="subtask-check">
+        <input type="checkbox" ${sub.done ? 'checked' : ''}>
+        <span class="subtask-text">${escapeHtml(sub.text)}</span>
+      </label>
+      <button type="button" class="btn-subtask-remove" title="移除子任務" aria-label="移除子任務">&times;</button>
+    `;
+    li.querySelector('input').addEventListener('change', (e) => {
+      sub.done = e.target.checked;
+      todoDetailState.dirty = true;
+      renderDetailSubtasks();
+    });
+    li.querySelector('.btn-subtask-remove').addEventListener('click', () => {
+      todoDetailState.subtasks.splice(index, 1);
+      todoDetailState.dirty = true;
+      renderDetailSubtasks();
+    });
+    listEl.appendChild(li);
+  });
+}
+
+// 新增子任務（按鈕或 Enter 觸發）
+window.handleAddSubtask = function() {
+  const input = document.getElementById('detail-subtask-input');
+  const text = input.value.trim();
+  if (!text) return;
+  todoDetailState.subtasks.push({ id: 's_' + Date.now(), text, done: false });
+  todoDetailState.dirty = true;
+  input.value = '';
+  renderDetailSubtasks();
+  input.focus();
+};
+
+// 送出任務詳情變更
+window.handleTodoDetailSubmit = async function(e) {
+  if (e) e.preventDefault();
+  if (!appState.currentUser) {
+    showToast('請先輸入 Email 登入系統！', 'error');
+    openModal('modal-login');
+    return;
+  }
+
+  const todoId = todoDetailState.todoId;
+  const original = appState.todos.find(t => t.id === todoId);
+  if (!original) {
+    showToast('找不到此任務，可能已被刪除', 'error');
+    closeModal('modal-todo-detail');
+    return;
+  }
+
+  const title = document.getElementById('detail-todo-title').value.trim();
+  if (!title) {
+    showToast('任務標題不可為空白！', 'error');
+    return;
+  }
+
+  const isCompleted = document.getElementById('detail-todo-completed').checked;
+  const updates = {
+    title,
+    description: document.getElementById('detail-todo-description').value.trim() || null,
+    category_id: document.getElementById('detail-todo-category').value || null,
+    assigned_email: document.getElementById('detail-todo-assignee').value || null,
+    due_date: localInputToISO(document.getElementById('detail-todo-due').value),
+    priority: document.getElementById('detail-todo-priority').value || 'normal',
+    subtasks: todoDetailState.subtasks,
+    is_completed: isCompleted
+  };
+  // 完成狀態有變動時才更新完成時間
+  if (isCompleted !== !!original.is_completed) {
+    updates.completed_at = isCompleted ? new Date().toISOString() : null;
+  }
+
+  const saveBtn = document.getElementById('btn-save-todo-detail');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '儲存中...';
+
+  try {
+    await DataService.updateTodo(todoId, updates);
+    todoDetailState.dirty = false;
+    renderTodoList();
+    renderCategories();
+    closeModal('modal-todo-detail');
+    showToast('任務內容已更新！', 'success');
+  } catch (err) {
+    console.error('[TodoDetail] 更新任務失敗:', err);
+    // 資料庫尚未執行升級腳本時，欄位不存在會導致更新失敗
+    const msg = String(err.message || '');
+    if (/description|priority|subtasks/.test(msg)) {
+      showToast('資料庫缺少新欄位，請先於 Supabase 執行 schema.sql 第 9 節升級指令', 'error');
+    } else {
+      showToast('更新任務失敗，請檢查網路連線', 'error');
+    }
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '儲存變更';
+  }
+};
+
+// 於詳情面板中刪除任務
+window.handleTodoDetailDelete = async function() {
+  const todo = appState.todos.find(t => t.id === todoDetailState.todoId);
+  if (!todo) return;
+  if (!confirm(`確定要刪除「${todo.title}」嗎？`)) return;
+  try {
+    await DataService.deleteTodo(todo.id);
+    todoDetailState.todoId = null;
+    closeModal('modal-todo-detail');
+    renderTodoList();
+    renderCategories();
+    showToast('已刪除待辦事項', 'success');
+  } catch (err) {
+    showToast('刪除失敗', 'error');
+  }
+};
+
+// 即時同步：其他成員修改任務時，若本機詳情面板開啟且無未儲存變更，則自動更新內容
+function syncTodoDetailFromRemote() {
+  const modal = document.getElementById('modal-todo-detail');
+  if (!modal || modal.classList.contains('hidden') || !todoDetailState.todoId) return;
+
+  const todo = appState.todos.find(t => t.id === todoDetailState.todoId);
+  if (!todo) {
+    closeModal('modal-todo-detail');
+    showToast('此任務已被其他成員刪除', 'error');
+    return;
+  }
+  if (!todoDetailState.dirty) {
+    fillTodoDetailForm(todo);
+  }
+}
 
 // 輔助函式：防範 XSS 的字串逸出
 function escapeHtml(str) {

@@ -15,7 +15,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <!-- 樣式表 (含防快取版本號) -->
-  <link rel="stylesheet" href="style.css?v=20261001_08">
+  <link rel="stylesheet" href="style.css?v=20261001_09">
 </head>
 <body>
   <!-- 應用程式主容器 -->
@@ -125,6 +125,7 @@
               <option value="created_desc">建立日期（新 → 舊）</option>
               <option value="created_asc">建立日期（舊 → 新）</option>
               <option value="due_asc">截止時間（近期優先）</option>
+              <option value="priority">優先度（高到低）</option>
               <option value="category">任務類別</option>
               <option value="assignee">負責人</option>
             </select>
@@ -391,10 +392,83 @@
     </div>
   </div>
 
+  <!-- 6. 任務詳情與編輯視窗 -->
+  <div class="modal-backdrop hidden" id="modal-todo-detail">
+    <div class="modal-card modal-large modal-todo-detail">
+      <div class="modal-header">
+        <h2 class="modal-title">任務詳情</h2>
+        <button type="button" class="modal-close" data-close="modal-todo-detail">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-todo-detail" onsubmit="handleTodoDetailSubmit(event)">
+          <div class="form-group">
+            <label for="detail-todo-title" class="form-label">任務標題</label>
+            <input type="text" id="detail-todo-title" class="form-input detail-title-input" required autocomplete="off">
+          </div>
+
+          <div class="detail-grid">
+            <div class="form-group">
+              <label for="detail-todo-category" class="form-label">分類</label>
+              <select id="detail-todo-category" class="form-select"></select>
+            </div>
+            <div class="form-group">
+              <label for="detail-todo-assignee" class="form-label">負責人</label>
+              <select id="detail-todo-assignee" class="form-select"></select>
+            </div>
+            <div class="form-group">
+              <label for="detail-todo-due" class="form-label">截止時間</label>
+              <input type="datetime-local" id="detail-todo-due" class="form-input">
+            </div>
+            <div class="form-group">
+              <label for="detail-todo-priority" class="form-label">優先度</label>
+              <select id="detail-todo-priority" class="form-select">
+                <option value="high">🔴 高</option>
+                <option value="normal">一般</option>
+                <option value="low">🔵 低</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="detail-todo-description" class="form-label">詳細說明</label>
+            <textarea id="detail-todo-description" class="form-input detail-textarea" rows="5" placeholder="補充任務背景、注意事項、相關連結..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <div class="detail-section-header">
+              <span class="form-label">子任務清單</span>
+              <span class="subtask-progress" id="detail-subtask-progress"></span>
+            </div>
+            <ul class="subtask-list" id="detail-subtask-list"></ul>
+            <div class="subtask-add-row">
+              <input type="text" id="detail-subtask-input" class="form-input" placeholder="新增子任務，按 Enter 加入" autocomplete="off" maxlength="200">
+              <button type="button" class="btn btn-light btn-sm" onclick="handleAddSubtask()">加入</button>
+            </div>
+          </div>
+
+          <label class="detail-complete-toggle">
+            <input type="checkbox" id="detail-todo-completed">
+            <span>標記為已完成</span>
+          </label>
+
+          <p class="detail-meta" id="detail-todo-meta"></p>
+
+          <div class="modal-actions modal-actions-between">
+            <button type="button" class="btn btn-outline-danger" onclick="handleTodoDetailDelete()">刪除任務</button>
+            <div style="display:flex; gap:0.5rem;">
+              <button type="button" class="btn btn-light" onclick="closeModal('modal-todo-detail')">取消</button>
+              <button type="submit" class="btn btn-primary" id="btn-save-todo-detail">儲存變更</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast 訊息通知容器 -->
   <div class="toast-container" id="toast-container"></div>
 
   <!-- 應用程式主邏輯 (含防快取版本號) -->
-  <script src="app.js?v=20261001_08"></script>
+  <script src="app.js?v=20261001_09"></script>
 </body>
 </html>
