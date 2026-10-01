@@ -15,7 +15,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <!-- 樣式表 (含防快取版本號) -->
-  <link rel="stylesheet" href="style.css?v=20261001_07">
+  <link rel="stylesheet" href="style.css?v=20261001_08">
 </head>
 <body>
   <!-- 應用程式主容器 -->
@@ -52,12 +52,14 @@
             </div>
           </div>
 
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-open-edit-nickname" onclick="openEditNicknameModal()" title="修改顯示暱稱">
+          <!-- 手機版隱藏此按鈕（可直接點擊上方個人資訊卡片修改暱稱） -->
+          <button type="button" class="btn btn-secondary btn-sm hide-on-mobile" id="btn-open-edit-nickname" onclick="openEditNicknameModal()" title="修改顯示暱稱">
             修改暱稱
           </button>
-          
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-open-whitelist" onclick="openWhitelistModal()" title="管理白名單成員">
-            成員管理
+
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-open-whitelist" onclick="openWhitelistModal()" title="管理白名單成員" aria-label="成員管理">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span class="btn-label">成員管理</span>
           </button>
 
           <button type="button" class="btn btn-icon btn-sm" id="btn-open-cloud-config" onclick="openCloudConfigModal()" title="雲端資料庫設定 (Supabase)">
@@ -67,8 +69,9 @@
             </svg>
           </button>
 
-          <button type="button" class="btn btn-outline-danger btn-sm" id="btn-logout" onclick="handleLogoutClick()" title="登出當前帳號">
-            登出
+          <button type="button" class="btn btn-outline-danger btn-sm" id="btn-logout" onclick="handleLogoutClick()" title="登出當前帳號" aria-label="登出">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span class="btn-label">登出</span>
           </button>
         </div>
       </div>
@@ -392,6 +395,6 @@
   <div class="toast-container" id="toast-container"></div>
 
   <!-- 應用程式主邏輯 (含防快取版本號) -->
-  <script src="app.js?v=20261001_07"></script>
+  <script src="app.js?v=20261001_08"></script>
 </body>
 </html>
