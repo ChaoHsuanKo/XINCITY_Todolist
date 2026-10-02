@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
   const html = `
   <div style="background:#f8fafc;padding:24px 12px;font-family:'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
-      <div style="background:#1e293b;color:#f8fafc;padding:16px 24px;font-size:15px;font-weight:600;">📋 團隊待辦清單 ・ 新任務指派</div>
+      <div style="background:#1e293b;color:#f8fafc;padding:16px 24px;font-size:15px;font-weight:600;">📋 鑫悅待辦清單 ・ 新任務指派</div>
       <div style="padding:24px;">
         <p style="margin:0 0 16px;color:#334155;font-size:15px;">
           ${escapeHtml(assignee.display_name)} 您好，<strong>${escapeHtml(assignerName)}</strong> 指派了一項任務給您：
