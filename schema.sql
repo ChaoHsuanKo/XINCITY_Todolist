@@ -79,3 +79,54 @@ CREATE POLICY "允許所有人維護待辦" ON public.todos FOR ALL USING (true)
 ALTER TABLE public.todos ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE public.todos ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high'));
 ALTER TABLE public.todos ADD COLUMN IF NOT EXISTS subtasks JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- ==========================================
+-- 11. 任務指派 Email 通知 (2026-10-03 新增)
+-- 任務被指派負責人（新增或改派）時，呼叫 Edge Function「notify-assignee」寄信給負責人。
+-- 前置：已部署 supabase/functions/notify-assignee 並設定 Secrets。
+-- ⚠️ 執行前請將下方 <WEBHOOK_SECRET> 替換為與 Edge Function Secrets 相同的密鑰
+--    （密鑰請勿提交至 Git，此倉庫為公開狀態）
+-- ==========================================
+
+-- 11-1. 記錄指派者（用於判斷「自己指派給自己」不寄信，並顯示於信件中）
+ALTER TABLE public.todos ADD COLUMN IF NOT EXISTS assigned_by TEXT;
+
+-- 11-2. 啟用 pg_net（資料庫內發送非同步 HTTP 請求，於交易提交後才送出，不影響存檔速度）
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
+-- 11-3. 觸發器函式：僅在「指派了新的負責人」且「不是指派給自己」時呼叫 Edge Function
+CREATE OR REPLACE FUNCTION public.notify_task_assignment()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.assigned_email IS NULL THEN
+    RETURN NEW;
+  END IF;
+  -- 負責人沒有變更（只改了其他欄位）則不重複寄信
+  IF TG_OP = 'UPDATE' AND lower(NEW.assigned_email) IS NOT DISTINCT FROM lower(OLD.assigned_email) THEN
+    RETURN NEW;
+  END IF;
+  -- 自己指派給自己不寄信（新增時若舊版前端未帶 assigned_by，以建立者判斷）
+  IF lower(NEW.assigned_email) = lower(coalesce(NEW.assigned_by, CASE WHEN TG_OP = 'INSERT' THEN NEW.created_by END, '')) THEN
+    RETURN NEW;
+  END IF;
+
+  PERFORM net.http_post(
+    url := 'https://dofkukshtqmtdxiomzfn.supabase.co/functions/v1/notify-assignee',
+    body := jsonb_build_object('todo_id', NEW.id),
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-webhook-secret', '<WEBHOOK_SECRET>'
+    ),
+    timeout_milliseconds := 10000
+  );
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_todo_assigned ON public.todos;
+CREATE TRIGGER on_todo_assigned
+  AFTER INSERT OR UPDATE OF assigned_email ON public.todos
+  FOR EACH ROW EXECUTE FUNCTION public.notify_task_assignment();
+
+-- 11-4. 寄信失敗排查：查看最近的 HTTP 呼叫結果（status_code 200 = 成功）
+-- SELECT id, status_code, content, created FROM net._http_response ORDER BY created DESC LIMIT 10;

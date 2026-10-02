@@ -665,6 +665,7 @@ function handleLogin(email) {
 
   setUserSession(user);
   closeModal('modal-login');
+  openTaskFromUrl(); // 從 Email 連結進入時，登入後自動開啟該任務
   showToast(`歡迎回來，${user.display_name}！`, 'success');
   return true;
 }
@@ -1174,6 +1175,7 @@ function bindEvents() {
         title,
         category_id: categoryId,
         assigned_email: assignedEmail,
+        assigned_by: assignedEmail ? appState.currentUser.email : null, // 指派者，供 Email 通知使用
         due_date: dueDate,
         is_completed: false,
         created_by: appState.currentUser.email
@@ -1656,6 +1658,10 @@ window.handleTodoDetailSubmit = async function(e) {
     subtasks: todoDetailState.subtasks,
     is_completed: isCompleted
   };
+  // 負責人變更時記錄指派者（資料庫觸發器據此寄送 Email 通知給新負責人）
+  if ((updates.assigned_email || null) !== (original.assigned_email || null)) {
+    updates.assigned_by = updates.assigned_email ? appState.currentUser.email : null;
+  }
   // 完成狀態有變動時才更新完成時間
   if (isCompleted !== !!original.is_completed) {
     updates.completed_at = isCompleted ? new Date().toISOString() : null;
@@ -1703,6 +1709,24 @@ window.handleTodoDetailDelete = async function() {
     showToast('刪除失敗', 'error');
   }
 };
+
+// 網址帶有 ?task=<任務ID>（例如從 Email 通知點擊進入）時，登入後自動開啟該任務詳情
+function openTaskFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const taskId = params.get('task');
+  if (!taskId || !appState.currentUser) return; // 尚未登入則保留參數，待登入後再開啟
+
+  // 移除網址參數，避免重新整理時再次開啟
+  params.delete('task');
+  const query = params.toString();
+  window.history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : '') + window.location.hash);
+
+  if (appState.todos.some(t => t.id === taskId)) {
+    openTodoDetail(taskId);
+  } else {
+    showToast('找不到此任務，可能已被刪除', 'error');
+  }
+}
 
 // 即時同步：其他成員修改任務時，若本機詳情面板開啟且無未儲存變更，則自動更新內容
 function syncTodoDetailFromRemote() {
@@ -1798,6 +1822,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     checkExistingAuth();
   } catch (e) { console.error('[App] checkExistingAuth 錯誤:', e); }
+
+  try {
+    openTaskFromUrl();
+  } catch (e) { console.error('[App] openTaskFromUrl 錯誤:', e); }
 
   console.log('[App] 系統啟動完成，當前使用者:', appState.currentUser?.email || '未登入');
 });
