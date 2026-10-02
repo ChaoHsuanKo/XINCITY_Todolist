@@ -9,6 +9,7 @@
  *   GMAIL_APP_PASSWORD  該帳號的 Google「應用程式密碼」（16 碼）
  *   WEBHOOK_SECRET      與觸發器共用的驗證密鑰，防止外部任意呼叫寄信
  *   SITE_URL            網站網址，例如 https://chaohsuanko.github.io/XINCITY_Todolist/
+ *   MAIL_FROM_NAME      （選填）寄件者顯示名稱，預設「鑫悅管理委員會」
  * SUPABASE_URL、SUPABASE_SERVICE_ROLE_KEY 由 Supabase 自動提供。
  *
  * 部署時須關閉「Verify JWT」（改以 WEBHOOK_SECRET 驗證）。
@@ -145,17 +146,22 @@ Deno.serve(async (req) => {
   ].join('\n');
 
   // 4. 透過 Gmail SMTP 寄出（Supabase Edge Functions 不允許 587 埠，使用 465 SSL）
-  const gmailUser = Deno.env.get('GMAIL_USER')!;
+  // 去除所有空白：Google 顯示的應用程式密碼為「abcd efgh ijkl mnop」格式，複製時常夾帶空格
+  const gmailUser = (Deno.env.get('GMAIL_USER') || '').trim();
+  const gmailPass = (Deno.env.get('GMAIL_APP_PASSWORD') || '').replace(/\s/g, '');
+  if (!gmailUser || !gmailPass) {
+    return json({ error: '尚未設定 GMAIL_USER 或 GMAIL_APP_PASSWORD' }, 500);
+  }
   const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
     secure: true,
-    auth: { user: gmailUser, pass: Deno.env.get('GMAIL_APP_PASSWORD')! }
+    auth: { user: gmailUser, pass: gmailPass }
   });
 
   try {
     await transporter.sendMail({
-      from: `"團隊待辦清單" <${gmailUser}>`,
+      from: { name: Deno.env.get('MAIL_FROM_NAME') || '鑫悅管理委員會', address: gmailUser },
       to: todo.assigned_email,
       subject: `【新任務指派】${todo.title}`,
       text,
@@ -163,7 +169,12 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error('[notify-assignee] 寄信失敗:', err);
-    return json({ error: `寄信失敗：${(err as Error).message}` }, 500);
+    // 附上排查資訊（僅帳號與密碼長度，不含密碼內容）；應用程式密碼應為 16 碼
+    return json({
+      error: `寄信失敗：${(err as Error).message}`,
+      gmail_user: gmailUser,
+      app_password_length: gmailPass.length
+    }, 500);
   }
 
   console.log(`[notify-assignee] 已寄送任務 ${todo.id} 通知至 ${todo.assigned_email}`);
