@@ -15,7 +15,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <!-- 樣式表 (含防快取版本號) -->
-  <link rel="stylesheet" href="style.css?v=20261003_03">
+  <link rel="stylesheet" href="style.css?v=20261003_04">
 </head>
 <body>
   <!-- 應用程式主容器 -->
@@ -124,6 +124,7 @@
             <select id="select-sort-by" class="form-select">
               <option value="created_desc">建立日期（新 → 舊）</option>
               <option value="created_asc">建立日期（舊 → 新）</option>
+              <option value="start_asc">開始日期（最早提出優先）</option>
               <option value="due_asc">截止時間（近期優先）</option>
               <option value="priority">優先度（高到低）</option>
               <option value="category">任務類別</option>
@@ -166,8 +167,17 @@
               </div>
 
               <div class="option-item">
-                <label for="input-todo-due" class="sr-only">截止時間</label>
-                <input type="datetime-local" id="input-todo-due" class="form-input input-compact input-date">
+                <label for="input-todo-start" class="input-with-prefix" title="問題提出／任務開始的日期（預設今天）">
+                  <span class="input-prefix">開始</span>
+                  <input type="date" id="input-todo-start" class="form-input input-compact input-date">
+                </label>
+              </div>
+
+              <div class="option-item">
+                <label for="input-todo-due" class="input-with-prefix" title="截止時間（選填）">
+                  <span class="input-prefix">截止</span>
+                  <input type="datetime-local" id="input-todo-due" class="form-input input-compact input-date">
+                </label>
               </div>
 
               <button type="submit" class="btn btn-primary" id="btn-submit-todo">
@@ -440,6 +450,10 @@
               <select id="detail-todo-assignee" class="form-select"></select>
             </div>
             <div class="form-group">
+              <label for="detail-todo-start" class="form-label">開始日期</label>
+              <input type="date" id="detail-todo-start" class="form-input">
+            </div>
+            <div class="form-group">
               <label for="detail-todo-due" class="form-label">截止時間</label>
               <input type="datetime-local" id="detail-todo-due" class="form-input">
             </div>
@@ -493,6 +507,6 @@
   <div class="toast-container" id="toast-container"></div>
 
   <!-- 應用程式主邏輯 (含防快取版本號) -->
-  <script src="app.js?v=20261003_03"></script>
+  <script src="app.js?v=20261003_04"></script>
 </body>
 </html>

@@ -41,6 +41,15 @@ function formatTaipei(iso: string | null): string {
   });
 }
 
+// 開始日期 (YYYY-MM-DD)；未設定時以建立日期（台灣時區）為準
+function formatStartDate(startDate: string | null, createdAt: string): string {
+  const dateStr = startDate
+    ? String(startDate).slice(0, 10)
+    : new Date(createdAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Taipei' }); // sv-SE 格式即 YYYY-MM-DD
+  const [y, m, d] = dateStr.split('-');
+  return `${y}/${Number(m)}/${Number(d)}`;
+}
+
 function json(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
@@ -138,6 +147,7 @@ Deno.serve(async (req) => {
         ${ccMembers.length ? `<p style="margin:-8px 0 16px;color:#64748b;font-size:13px;">副本通知：${ccMembers.map(m => escapeHtml(m.display_name || m.email)).join('、')}</p>` : ''}
         <table style="width:100%;border-collapse:collapse;font-size:14px;background:#f8fafc;border-radius:8px;">
           ${row('分類', escapeHtml(categoryName))}
+          ${row('開始日期', escapeHtml(formatStartDate(todo.start_date, todo.created_at)))}
           ${row('截止時間', `<span style="${isOverdue ? 'color:#dc2626;font-weight:600;' : ''}">${escapeHtml(formatTaipei(todo.due_date))}${isOverdue ? '（已逾期）' : ''}</span>`)}
           ${row('優先度', escapeHtml(PRIORITY_LABELS[todo.priority] || '一般'))}
           ${todo.description ? row('說明', `<div style="white-space:pre-wrap;">${escapeHtml(todo.description)}</div>`) : ''}
@@ -161,6 +171,7 @@ Deno.serve(async (req) => {
     `任務：${todo.title}`,
     ccMembers.length ? `副本通知：${ccMembers.map(m => m.display_name || m.email).join('、')}` : '',
     `分類：${categoryName}`,
+    `開始日期：${formatStartDate(todo.start_date, todo.created_at)}`,
     `截止時間：${formatTaipei(todo.due_date)}`,
     `優先度：${PRIORITY_LABELS[todo.priority] || '一般'}`,
     todo.description ? `說明：\n${todo.description}` : '',

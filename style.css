@@ -542,6 +542,61 @@ input:checked + .slider:before {
   border-radius: var(--radius-sm);
 }
 
+/* 帶前綴文字的輸入框（區分「開始日期」與「截止時間」） */
+.input-with-prefix {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  transition: border-color var(--transition-fast);
+}
+
+.input-with-prefix:focus-within {
+  border-color: var(--primary-500);
+}
+
+.input-prefix {
+  flex-shrink: 0;
+  padding-left: 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.input-with-prefix .form-input {
+  border: none;
+  min-width: 0;
+}
+
+.input-with-prefix .form-input:focus {
+  outline: none;
+}
+
+/* 卡片：開始日期與經過天數 */
+.age-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  background: #f1f5f9;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.age-badge.age-long {
+  background: #fff7ed;
+  color: #c2410c;
+  font-weight: 600;
+}
+
+.age-badge.age-closed {
+  background: #ecfdf5;
+  color: #047857;
+}
+
 /* 列表頂部資訊與搜尋 */
 .list-header-bar {
   display: flex;
@@ -1594,6 +1649,7 @@ input:checked + .slider:before {
   }
 
   .form-row-options .option-item:nth-child(3),
+  .form-row-options .option-item:nth-child(4),
   #btn-submit-todo {
     grid-column: 1 / -1;
   }

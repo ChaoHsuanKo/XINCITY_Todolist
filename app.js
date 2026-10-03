@@ -144,6 +144,7 @@ function initDOM() {
     inputTodoTitle: document.getElementById('input-todo-title'),
     selectTodoCategory: document.getElementById('select-todo-category'),
     selectTodoAssignee: document.getElementById('select-todo-assignee'),
+    inputTodoStart: document.getElementById('input-todo-start'),
     inputTodoDue: document.getElementById('input-todo-due'),
     currentCategoryIndicator: document.getElementById('current-category-indicator'),
     taskSummaryText: document.getElementById('task-summary-text'),
@@ -389,7 +390,8 @@ const DataService = {
       if (error) throw error;
     } else {
       const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY));
-      local.todos = local.todos.map(t => t.id === todoId ? { ...t, is_completed: isCompleted } : t);
+      const completedAt = isCompleted ? new Date().toISOString() : null;
+      local.todos = local.todos.map(t => t.id === todoId ? { ...t, is_completed: isCompleted, completed_at: completedAt } : t);
       localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(local));
       appState.todos = local.todos;
     }
@@ -912,6 +914,8 @@ function renderTodoList() {
     switch (appState.sortBy) {
       case 'created_asc':
         return new Date(a.created_at) - new Date(b.created_at);
+      case 'start_asc':
+        return getTodoStartDate(a).localeCompare(getTodoStartDate(b));
       case 'due_asc':
         if (!a.due_date && !b.due_date) return 0;
         if (!a.due_date) return 1;
@@ -988,6 +992,10 @@ function renderTodoList() {
       </span>
     ` : '';
 
+    // 開始日期與經過天數：進行中顯示已過幾天，已完成顯示經幾天結案
+    const ageInfo = formatTodoAge(todo);
+    const ageHtml = `<span class="age-badge ${ageInfo.className}" title="${escapeHtml(ageInfo.title)}">${ageInfo.text}</span>`;
+
     // 優先度資訊（一般優先度不顯示，避免畫面雜亂）
     const priorityInfo = PRIORITY_OPTIONS[todo.priority];
     const priorityHtml = priorityInfo && todo.priority !== 'normal' ? `
@@ -1021,6 +1029,7 @@ function renderTodoList() {
         ${subtaskHtml}
         ${categoryHtml}
         ${assigneeHtml}
+        ${ageHtml}
         ${dueHtml}
         <button type="button" class="btn-card-delete" title="刪除此任務" aria-label="刪除任務">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1288,6 +1297,7 @@ function bindEvents() {
     const assignedEmail = DOM.selectTodoAssignee.value || null;
     // datetime-local 值不含時區，需轉為 ISO 字串，否則資料庫會以 UTC 解讀而差 8 小時
     const dueDate = localInputToISO(DOM.inputTodoDue.value);
+    const startDate = DOM.inputTodoStart.value || todayDateString();
 
     try {
       await DataService.addTodo({
@@ -1295,6 +1305,7 @@ function bindEvents() {
         category_id: categoryId,
         assigned_email: assignedEmail,
         assigned_by: assignedEmail ? appState.currentUser.email : null, // 指派者，供 Email 通知使用
+        start_date: startDate,
         due_date: dueDate,
         is_completed: false,
         created_by: appState.currentUser.email
@@ -1302,6 +1313,7 @@ function bindEvents() {
 
       DOM.inputTodoTitle.value = '';
       DOM.inputTodoDue.value = '';
+      DOM.inputTodoStart.value = todayDateString();
       renderTodoList();
       renderCategories();
       showToast('待辦事項已新增！', 'success');
@@ -1677,6 +1689,7 @@ function fillTodoDetailForm(todo) {
   document.getElementById('detail-todo-description').value = todo.description || '';
   catSelect.value = todo.category_id || '';
   assigneeSelect.value = todo.assigned_email || '';
+  document.getElementById('detail-todo-start').value = getTodoStartDate(todo);
   document.getElementById('detail-todo-due').value = isoToLocalInput(todo.due_date);
   document.getElementById('detail-todo-priority').value = PRIORITY_OPTIONS[todo.priority] ? todo.priority : 'normal';
   document.getElementById('detail-todo-completed').checked = !!todo.is_completed;
@@ -1772,6 +1785,7 @@ window.handleTodoDetailSubmit = async function(e) {
     description: document.getElementById('detail-todo-description').value.trim() || null,
     category_id: document.getElementById('detail-todo-category').value || null,
     assigned_email: document.getElementById('detail-todo-assignee').value || null,
+    start_date: document.getElementById('detail-todo-start').value || getTodoStartDate(original),
     due_date: localInputToISO(document.getElementById('detail-todo-due').value),
     priority: document.getElementById('detail-todo-priority').value || 'normal',
     subtasks: todoDetailState.subtasks,
@@ -1879,6 +1893,54 @@ function safeColor(color) {
   return /^#[0-9a-fA-F]{6}$/.test(color || '') ? color : '#94a3b8';
 }
 
+// 輔助函式：取得本地時區「今天」的日期字串 (YYYY-MM-DD)，供 date 輸入框與開始日期預設值使用
+function todayDateString() {
+  return isoToLocalInput(new Date().toISOString()).slice(0, 10);
+}
+
+// 輔助函式：取得任務開始日期 (YYYY-MM-DD)；未設定時以建立日期（本地時區）為準
+function getTodoStartDate(todo) {
+  if (todo.start_date) return String(todo.start_date).slice(0, 10);
+  return isoToLocalInput(todo.created_at).slice(0, 10) || todayDateString();
+}
+
+// 輔助函式：計算兩個日曆日 (YYYY-MM-DD) 相差的天數（以本地日期計算，不受時區影響）
+function daysBetweenDates(fromDateStr, toDateStr) {
+  const toUtcDay = str => {
+    const [y, m, d] = str.split('-').map(Number);
+    return Date.UTC(y, m - 1, d);
+  };
+  return Math.round((toUtcDay(toDateStr) - toUtcDay(fromDateStr)) / 86400000);
+}
+
+// 卡片顯示：開始日期與經過天數（進行中超過 30 天以醒目色提示）
+const LONG_OPEN_DAYS = 30;
+function formatTodoAge(todo) {
+  const startDate = getTodoStartDate(todo);
+  const [, m, d] = startDate.split('-').map(Number);
+  const startLabel = `${m}/${d}`;
+
+  if (todo.is_completed) {
+    const completedDate = todo.completed_at ? isoToLocalInput(todo.completed_at).slice(0, 10) : '';
+    if (!completedDate) {
+      return { text: '✅ 已結案', className: 'age-closed', title: `開始日期 ${startDate}（無完成時間紀錄）` };
+    }
+    const days = Math.max(0, daysBetweenDates(startDate, completedDate));
+    return {
+      text: days === 0 ? '✅ 當天結案' : `✅ 經 ${days} 天結案`,
+      className: 'age-closed',
+      title: `開始 ${startDate} → 結案 ${completedDate}`
+    };
+  }
+
+  const days = Math.max(0, daysBetweenDates(startDate, todayDateString()));
+  return {
+    text: days === 0 ? `🗓 ${startLabel} 起 ・ 今天` : `🗓 ${startLabel} 起 ・ 已 ${days} 天`,
+    className: days >= LONG_OPEN_DAYS ? 'age-long' : '',
+    title: `開始日期 ${startDate}`
+  };
+}
+
 // 輔助函式：將 datetime-local 輸入值（本地時間、無時區）轉為帶時區的 ISO 字串
 function localInputToISO(value) {
   if (!value) return null;
@@ -1897,6 +1959,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 綁定所有事件（不依賴任何資料）
   bindEvents();
+
+  // 新增任務的開始日期預設為今天
+  if (DOM.inputTodoStart) DOM.inputTodoStart.value = todayDateString();
 
   // 初始化資料層（允許失敗，失敗則降級為本地模式）
   try {
