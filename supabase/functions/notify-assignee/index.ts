@@ -2,7 +2,7 @@
  * Supabase Edge Function：任務指派 Email 通知 (notify-assignee)
  *
  * 由資料庫觸發器 notify_task_assignment()（schema.sql 第 11 節）在任務被指派負責人時呼叫，
- * 透過 Gmail SMTP 寄送任務資訊與直達連結給負責人，並以副本 (CC) 寄給該負責人設定的「同時通知」成員。
+ * 透過 Gmail SMTP 寄送任務資訊與直達連結給負責人，負責人為管委會時，並以副本 (CC) 寄給管理員設定的「同時通知」成員。
  *
  * 需於 Supabase → Edge Functions → Secrets 設定：
  *   GMAIL_USER          寄件 Gmail 帳號（管委會信箱）
@@ -79,8 +79,11 @@ Deno.serve(async (req) => {
   // 自己指派給自己：負責人本人不寄，但「同時通知」的成員仍會收到
   const notifyAssignee = assignedBy !== assignee.email.toLowerCase();
 
-  // 同時通知 (CC)：僅限白名單成員，排除負責人本人與指派者
-  const ccMembers = (Array.isArray(assignee.notify_cc) ? assignee.notify_cc : [])
+  // 同時通知 (CC)：僅管委會帳號適用（與前端 NOTIFY_CC_ACCOUNTS 一致）；僅限白名單成員，排除負責人本人與指派者
+  const NOTIFY_CC_ACCOUNTS = ['hsinyueh.hoa@gmail.com'];
+  const ccSource = NOTIFY_CC_ACCOUNTS.includes(assignee.email.toLowerCase()) && Array.isArray(assignee.notify_cc)
+    ? assignee.notify_cc : [];
+  const ccMembers = ccSource
     .map((email: string) => findMember(email))
     .filter((m, i, arr) =>
       m &&

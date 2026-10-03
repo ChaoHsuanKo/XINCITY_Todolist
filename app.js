@@ -73,6 +73,12 @@ const INITIAL_LOCAL_STATE = {
   ]
 };
 
+// 可設定「同時通知」的帳號（僅管委會；其他成員不提供此選項，避免混淆）
+const NOTIFY_CC_ACCOUNTS = ['hsinyueh.hoa@gmail.com'];
+function canHaveNotifyCc(email) {
+  return NOTIFY_CC_ACCOUNTS.includes(String(email || '').toLowerCase());
+}
+
 // 任務優先度選項
 const PRIORITY_OPTIONS = {
   high: { label: '🔴 高', rank: 0 },
@@ -1078,23 +1084,27 @@ function renderWhitelistTable() {
   DOM.whitelistTableBody.innerHTML = '';
   const isAdmin = appState.currentUser?.role === 'admin';
   appState.whitelist.forEach(user => {
-    // 同時通知對象：只顯示仍在白名單中的成員
-    const ccMembers = getNotifyCcMembers(user);
-    const ccHtml = ccMembers.length
-      ? ccMembers.map(m => `<span class="notify-cc-chip" title="${escapeHtml(m.email)}">${escapeHtml(m.display_name || m.email)}</span>`).join('')
-      : '<span class="notify-cc-empty">—</span>';
+    // 同時通知對象：僅管委會帳號提供此設定，只顯示仍在白名單中的成員
+    let ccCellHtml = '';
+    if (canHaveNotifyCc(user.email)) {
+      const ccMembers = getNotifyCcMembers(user);
+      const ccHtml = ccMembers.length
+        ? ccMembers.map(m => `<span class="notify-cc-chip" title="${escapeHtml(m.email)}">${escapeHtml(m.display_name || m.email)}</span>`).join('')
+        : '<span class="notify-cc-empty">尚未設定</span>';
+      ccCellHtml = `
+        <div class="notify-cc-cell">
+          ${ccHtml}
+          ${isAdmin ? '<button type="button" class="btn-notify-cc-edit" title="設定指派給管委會時，同時通知哪些人">設定</button>' : ''}
+        </div>
+      `;
+    }
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong>${escapeHtml(user.email)}</strong></td>
       <td>${escapeHtml(user.display_name)}</td>
       <td><span class="badge" style="background:#e2e8f0;">${user.role === 'admin' ? '管理者' : '一般成員'}</span></td>
-      <td>
-        <div class="notify-cc-cell">
-          ${ccHtml}
-          ${isAdmin ? '<button type="button" class="btn-notify-cc-edit" title="設定指派給此成員時，同時通知哪些人">設定</button>' : ''}
-        </div>
-      </td>
+      <td>${ccCellHtml}</td>
       <td style="text-align: right;">
         ${appState.currentUser?.role === 'admin' && user.email !== appState.currentUser?.email ? `
           <button type="button" class="btn btn-outline-danger btn-sm" data-email="${escapeHtml(user.email)}">移除</button>
@@ -1142,7 +1152,7 @@ function openNotifyCcModal(email) {
     return;
   }
   const target = appState.whitelist.find(u => u.email === email);
-  if (!target) return;
+  if (!target || !canHaveNotifyCc(target.email)) return;
 
   document.getElementById('notify-cc-target-email').value = target.email;
   document.getElementById('notify-cc-target-name').textContent = target.display_name || target.email;
@@ -1175,6 +1185,7 @@ window.handleNotifyCcSubmit = async function(e) {
     return;
   }
   const email = document.getElementById('notify-cc-target-email').value;
+  if (!canHaveNotifyCc(email)) return;
   const ccEmails = [...document.querySelectorAll('#notify-cc-list input[type="checkbox"]:checked')].map(cb => cb.value);
 
   const saveBtn = document.getElementById('btn-save-notify-cc');
