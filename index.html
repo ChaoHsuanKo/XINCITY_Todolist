@@ -15,7 +15,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <!-- 樣式表 (含防快取版本號) -->
-  <link rel="stylesheet" href="style.css?v=20261003_01">
+  <link rel="stylesheet" href="style.css?v=20261003_02">
 </head>
 <body>
   <!-- 應用程式主容器 -->
@@ -353,6 +353,7 @@
                 <th>Email</th>
                 <th>顯示暱稱</th>
                 <th>權限角色</th>
+                <th title="任務指派給此成員時，同時以副本 (CC) 寄送通知信的對象">同時通知</th>
                 <th style="text-align: right;">操作</th>
               </tr>
             </thead>
@@ -361,6 +362,29 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4-1. 設定「同時通知」對象視窗 (Admin 權限) -->
+  <div class="modal-backdrop hidden" id="modal-notify-cc">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">設定同時通知對象</h2>
+        <button type="button" class="modal-close" data-close="modal-notify-cc">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-tip">任務指派給「<strong id="notify-cc-target-name"></strong>」時，以下勾選的成員也會收到通知信副本 (CC)。</p>
+        <form id="form-notify-cc" onsubmit="handleNotifyCcSubmit(event)">
+          <input type="hidden" id="notify-cc-target-email">
+          <ul class="notify-cc-list" id="notify-cc-list">
+            <!-- 動態生成其他成員勾選清單 -->
+          </ul>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-light" onclick="closeModal('modal-notify-cc')">取消</button>
+            <button type="submit" class="btn btn-primary" id="btn-save-notify-cc">儲存設定</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
@@ -469,6 +493,6 @@
   <div class="toast-container" id="toast-container"></div>
 
   <!-- 應用程式主邏輯 (含防快取版本號) -->
-  <script src="app.js?v=20261003_01"></script>
+  <script src="app.js?v=20261003_02"></script>
 </body>
 </html>

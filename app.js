@@ -590,6 +590,24 @@ const DataService = {
     }
   },
 
+  // 更新成員的「同時通知」名單（任務指派給該成員時，副本寄送的對象 Email 陣列）
+  async updateMemberNotifyCc(email, ccEmails) {
+    if (appState.isCloudMode) {
+      const { error } = await appState.supabaseClient
+        .from('users_whitelist')
+        .update({ notify_cc: ccEmails })
+        .eq('email', email);
+      if (error) throw error;
+      const target = appState.whitelist.find(u => u.email === email);
+      if (target) target.notify_cc = ccEmails;
+    } else {
+      const local = JSON.parse(localStorage.getItem(LOCAL_DATA_KEY));
+      local.whitelist = local.whitelist.map(u => u.email === email ? { ...u, notify_cc: ccEmails } : u);
+      localStorage.setItem(LOCAL_DATA_KEY, JSON.stringify(local));
+      appState.whitelist = local.whitelist;
+    }
+  },
+
   // 刪除白名單成員
   async removeWhitelistMember(email) {
     if (appState.isCloudMode) {
@@ -1058,12 +1076,25 @@ function renderTodoList() {
 // 渲染白名單成員管理表格 (Admin)
 function renderWhitelistTable() {
   DOM.whitelistTableBody.innerHTML = '';
+  const isAdmin = appState.currentUser?.role === 'admin';
   appState.whitelist.forEach(user => {
+    // 同時通知對象：只顯示仍在白名單中的成員
+    const ccMembers = getNotifyCcMembers(user);
+    const ccHtml = ccMembers.length
+      ? ccMembers.map(m => `<span class="notify-cc-chip" title="${escapeHtml(m.email)}">${escapeHtml(m.display_name || m.email)}</span>`).join('')
+      : '<span class="notify-cc-empty">—</span>';
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong>${escapeHtml(user.email)}</strong></td>
       <td>${escapeHtml(user.display_name)}</td>
       <td><span class="badge" style="background:#e2e8f0;">${user.role === 'admin' ? '管理者' : '一般成員'}</span></td>
+      <td>
+        <div class="notify-cc-cell">
+          ${ccHtml}
+          ${isAdmin ? '<button type="button" class="btn-notify-cc-edit" title="設定指派給此成員時，同時通知哪些人">設定</button>' : ''}
+        </div>
+      </td>
       <td style="text-align: right;">
         ${appState.currentUser?.role === 'admin' && user.email !== appState.currentUser?.email ? `
           <button type="button" class="btn btn-outline-danger btn-sm" data-email="${escapeHtml(user.email)}">移除</button>
@@ -1071,7 +1102,12 @@ function renderWhitelistTable() {
       </td>
     `;
 
-    const removeBtn = tr.querySelector('button');
+    const ccEditBtn = tr.querySelector('.btn-notify-cc-edit');
+    if (ccEditBtn) {
+      ccEditBtn.addEventListener('click', () => openNotifyCcModal(user.email));
+    }
+
+    const removeBtn = tr.querySelector('.btn-outline-danger');
     if (removeBtn) {
       removeBtn.addEventListener('click', async () => {
         if (confirm(`確定將 ${user.email} 從白名單中移除？`)) {
@@ -1090,6 +1126,78 @@ function renderWhitelistTable() {
     DOM.whitelistTableBody.appendChild(tr);
   });
 }
+
+// 取得成員的「同時通知」對象（過濾已不在白名單者與本人）
+function getNotifyCcMembers(user) {
+  const ccEmails = Array.isArray(user.notify_cc) ? user.notify_cc : [];
+  return ccEmails
+    .map(email => appState.whitelist.find(m => m.email.toLowerCase() === String(email).toLowerCase()))
+    .filter(m => m && m.email.toLowerCase() !== user.email.toLowerCase());
+}
+
+// 開啟「同時通知」設定視窗：列出其他成員供勾選
+function openNotifyCcModal(email) {
+  if (appState.currentUser?.role !== 'admin') {
+    showToast('只有系統管理員可以設定通知對象！', 'error');
+    return;
+  }
+  const target = appState.whitelist.find(u => u.email === email);
+  if (!target) return;
+
+  document.getElementById('notify-cc-target-email').value = target.email;
+  document.getElementById('notify-cc-target-name').textContent = target.display_name || target.email;
+
+  const selected = new Set(getNotifyCcMembers(target).map(m => m.email.toLowerCase()));
+  const listEl = document.getElementById('notify-cc-list');
+  listEl.innerHTML = '';
+  appState.whitelist
+    .filter(m => m.email !== target.email)
+    .forEach(m => {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <label>
+          <input type="checkbox" value="${escapeHtml(m.email)}" ${selected.has(m.email.toLowerCase()) ? 'checked' : ''}>
+          <span>${escapeHtml(m.display_name || m.email)}</span>
+          <span class="notify-cc-email">${escapeHtml(m.email)}</span>
+        </label>
+      `;
+      listEl.appendChild(li);
+    });
+
+  openModal('modal-notify-cc');
+}
+
+// 儲存「同時通知」設定
+window.handleNotifyCcSubmit = async function(e) {
+  if (e) e.preventDefault();
+  if (appState.currentUser?.role !== 'admin') {
+    showToast('只有系統管理員可以設定通知對象！', 'error');
+    return;
+  }
+  const email = document.getElementById('notify-cc-target-email').value;
+  const ccEmails = [...document.querySelectorAll('#notify-cc-list input[type="checkbox"]:checked')].map(cb => cb.value);
+
+  const saveBtn = document.getElementById('btn-save-notify-cc');
+  saveBtn.disabled = true;
+  saveBtn.textContent = '儲存中...';
+  try {
+    await DataService.updateMemberNotifyCc(email, ccEmails);
+    renderWhitelistTable();
+    closeModal('modal-notify-cc');
+    showToast('已更新同時通知對象', 'success');
+  } catch (err) {
+    console.error('[NotifyCc] 更新失敗:', err);
+    // 資料庫尚未新增 notify_cc 欄位時會失敗
+    if (/notify_cc/.test(String(err.message || ''))) {
+      showToast('資料庫缺少 notify_cc 欄位，請先於 Supabase 執行 schema.sql 第 12 節', 'error');
+    } else {
+      showToast('更新失敗，請檢查網路連線', 'error');
+    }
+  } finally {
+    saveBtn.disabled = false;
+    saveBtn.textContent = '儲存設定';
+  }
+};
 
 // ==========================================
 // 7. 事件監聽與表單處理

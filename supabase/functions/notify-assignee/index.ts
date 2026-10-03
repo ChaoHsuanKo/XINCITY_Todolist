@@ -2,7 +2,7 @@
  * Supabase Edge Function：任務指派 Email 通知 (notify-assignee)
  *
  * 由資料庫觸發器 notify_task_assignment()（schema.sql 第 11 節）在任務被指派負責人時呼叫，
- * 透過 Gmail SMTP 寄送任務資訊與直達連結給負責人。
+ * 透過 Gmail SMTP 寄送任務資訊與直達連結給負責人，並以副本 (CC) 寄給該負責人設定的「同時通知」成員。
  *
  * 需於 Supabase → Edge Functions → Secrets 設定：
  *   GMAIL_USER          寄件 Gmail 帳號（管委會信箱）
@@ -66,7 +66,8 @@ Deno.serve(async (req) => {
   if (todoErr) return json({ error: todoErr.message }, 500);
   if (!todo || !todo.assigned_email) return json({ skipped: '任務不存在或無負責人' });
 
-  const { data: members } = await supabase.from('users_whitelist').select('email, display_name');
+  const { data: members, error: membersErr } = await supabase.from('users_whitelist').select('*');
+  if (membersErr) return json({ error: membersErr.message }, 500);
   const findMember = (email: string | null) =>
     email ? (members || []).find(m => m.email.toLowerCase() === email.toLowerCase()) : undefined;
 
@@ -74,9 +75,22 @@ Deno.serve(async (req) => {
   const assignee = findMember(todo.assigned_email);
   if (!assignee) return json({ skipped: '負責人不在白名單中' });
 
-  // 自己指派給自己不寄
-  if (todo.assigned_by && todo.assigned_by.toLowerCase() === todo.assigned_email.toLowerCase()) {
-    return json({ skipped: '自己指派給自己' });
+  const assignedBy = (todo.assigned_by || '').toLowerCase();
+  // 自己指派給自己：負責人本人不寄，但「同時通知」的成員仍會收到
+  const notifyAssignee = assignedBy !== assignee.email.toLowerCase();
+
+  // 同時通知 (CC)：僅限白名單成員，排除負責人本人與指派者
+  const ccMembers = (Array.isArray(assignee.notify_cc) ? assignee.notify_cc : [])
+    .map((email: string) => findMember(email))
+    .filter((m, i, arr) =>
+      m &&
+      m.email.toLowerCase() !== assignee.email.toLowerCase() &&
+      m.email.toLowerCase() !== assignedBy &&
+      arr.findIndex(x => x?.email === m.email) === i // 去除重複
+    ) as { email: string; display_name: string }[];
+
+  if (!notifyAssignee && ccMembers.length === 0) {
+    return json({ skipped: '自己指派給自己，且無同時通知對象' });
   }
 
   let categoryName = '未分類';
@@ -91,6 +105,10 @@ Deno.serve(async (req) => {
   const taskUrl = `${siteUrl}?task=${encodeURIComponent(todo.id)}`;
 
   // 3. 組合信件內容
+  // 開頭問候：一般為「負責人您好，指派者指派了任務給您」；自己指派給自己時改為通知同時通知成員
+  const greetingText = notifyAssignee
+    ? `${assignee.display_name} 您好，${assignerName} 指派了一項任務給您：`
+    : `您好，${assignee.display_name} 已接下以下任務（您為同時通知對象）：`;
   const subtasks: { text: string; done: boolean }[] = Array.isArray(todo.subtasks) ? todo.subtasks : [];
   const subtasksHtml = subtasks.length
     ? `<ul style="margin:4px 0 0;padding-left:20px;">${subtasks
@@ -111,9 +129,10 @@ Deno.serve(async (req) => {
       <div style="background:#1e293b;color:#f8fafc;padding:16px 24px;font-size:15px;font-weight:600;">📋 鑫悅待辦清單 ・ 新任務指派</div>
       <div style="padding:24px;">
         <p style="margin:0 0 16px;color:#334155;font-size:15px;">
-          ${escapeHtml(assignee.display_name)} 您好，<strong>${escapeHtml(assignerName)}</strong> 指派了一項任務給您：
+          ${escapeHtml(greetingText)}
         </p>
         <h2 style="margin:0 0 16px;font-size:20px;color:#0f172a;">${escapeHtml(todo.title)}</h2>
+        ${ccMembers.length ? `<p style="margin:-8px 0 16px;color:#64748b;font-size:13px;">副本通知：${ccMembers.map(m => escapeHtml(m.display_name || m.email)).join('、')}</p>` : ''}
         <table style="width:100%;border-collapse:collapse;font-size:14px;background:#f8fafc;border-radius:8px;">
           ${row('分類', escapeHtml(categoryName))}
           ${row('截止時間', `<span style="${isOverdue ? 'color:#dc2626;font-weight:600;' : ''}">${escapeHtml(formatTaipei(todo.due_date))}${isOverdue ? '（已逾期）' : ''}</span>`)}
@@ -134,9 +153,10 @@ Deno.serve(async (req) => {
   </div>`;
 
   const text = [
-    `${assignee.display_name} 您好，${assignerName} 指派了一項任務給您：`,
+    greetingText,
     '',
     `任務：${todo.title}`,
+    ccMembers.length ? `副本通知：${ccMembers.map(m => m.display_name || m.email).join('、')}` : '',
     `分類：${categoryName}`,
     `截止時間：${formatTaipei(todo.due_date)}`,
     `優先度：${PRIORITY_LABELS[todo.priority] || '一般'}`,
@@ -159,10 +179,15 @@ Deno.serve(async (req) => {
     auth: { user: gmailUser, pass: gmailPass }
   });
 
+  // 收件人：負責人（自己指派給自己時改由同時通知成員為收件人）；副本：同時通知成員
+  const toList = notifyAssignee ? [assignee.email] : ccMembers.map(m => m.email);
+  const ccList = notifyAssignee ? ccMembers.map(m => m.email) : [];
+
   try {
     await transporter.sendMail({
       from: { name: Deno.env.get('MAIL_FROM_NAME') || '鑫悅管理委員會', address: gmailUser },
-      to: todo.assigned_email,
+      to: toList,
+      cc: ccList.length ? ccList : undefined,
       subject: `【新任務指派】${todo.title}`,
       text,
       html
@@ -177,6 +202,6 @@ Deno.serve(async (req) => {
     }, 500);
   }
 
-  console.log(`[notify-assignee] 已寄送任務 ${todo.id} 通知至 ${todo.assigned_email}`);
-  return json({ sent: true, to: todo.assigned_email });
+  console.log(`[notify-assignee] 已寄送任務 ${todo.id} 通知 to=${toList.join(',')} cc=${ccList.join(',')}`);
+  return json({ sent: true, to: toList, cc: ccList });
 });

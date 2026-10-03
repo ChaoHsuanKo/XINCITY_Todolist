@@ -1226,6 +1226,82 @@ input:checked + .slider:before {
   margin-bottom: 1.25rem;
 }
 
+/* 白名單表格：同時通知欄位 */
+.notify-cc-cell {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.notify-cc-chip {
+  font-size: 0.72rem;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  background: var(--primary-50);
+  color: var(--primary-700);
+  white-space: nowrap;
+}
+
+.notify-cc-empty {
+  font-size: 0.75rem;
+  color: var(--text-light);
+}
+
+.btn-notify-cc-edit {
+  background: none;
+  border: none;
+  color: var(--primary-500);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+}
+
+.btn-notify-cc-edit:hover {
+  background: var(--primary-50);
+}
+
+/* 同時通知對象勾選清單 */
+.notify-cc-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.5rem;
+}
+
+.notify-cc-list label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.notify-cc-list label:hover {
+  background: #f1f5f9;
+}
+
+.notify-cc-list input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary-500);
+  flex-shrink: 0;
+}
+
+.notify-cc-email {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
 .whitelist-table-wrapper {
   max-height: 280px;
   overflow-y: auto;

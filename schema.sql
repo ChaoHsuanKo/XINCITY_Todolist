@@ -130,3 +130,38 @@ CREATE TRIGGER on_todo_assigned
 
 -- 11-4. 寄信失敗排查：查看最近的 HTTP 呼叫結果（status_code 200 = 成功）
 -- SELECT id, status_code, content, created FROM net._http_response ORDER BY created DESC LIMIT 10;
+
+-- ==========================================
+-- 12. 同時通知 (CC) 設定 (2026-10-03 新增)
+-- 管理員可為每位成員設定「同時通知」名單：任務指派給該成員時，名單中的成員也會收到副本。
+-- ⚠️ 執行前請將下方 <WEBHOOK_SECRET> 替換為與 Edge Function Secrets 相同的密鑰
+-- ==========================================
+
+-- 12-1. 成員的同時通知名單（Email 陣列）
+ALTER TABLE public.users_whitelist ADD COLUMN IF NOT EXISTS notify_cc TEXT[] NOT NULL DEFAULT '{}';
+
+-- 12-2. 更新觸發器：移除「自己指派給自己不寄信」判斷，改由 Edge Function 決定
+--       （自己指派給自己時，負責人本人不收信，但同時通知名單的成員仍會收到）
+CREATE OR REPLACE FUNCTION public.notify_task_assignment()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.assigned_email IS NULL THEN
+    RETURN NEW;
+  END IF;
+  -- 負責人沒有變更（只改了其他欄位）則不重複寄信
+  IF TG_OP = 'UPDATE' AND lower(NEW.assigned_email) IS NOT DISTINCT FROM lower(OLD.assigned_email) THEN
+    RETURN NEW;
+  END IF;
+
+  PERFORM net.http_post(
+    url := 'https://dofkukshtqmtdxiomzfn.supabase.co/functions/v1/notify-assignee',
+    body := jsonb_build_object('todo_id', NEW.id),
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-webhook-secret', '<WEBHOOK_SECRET>'
+    ),
+    timeout_milliseconds := 10000
+  );
+  RETURN NEW;
+END;
+$$;
