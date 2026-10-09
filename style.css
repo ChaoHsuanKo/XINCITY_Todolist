@@ -763,6 +763,109 @@ input:checked + .slider:before {
   border-radius: var(--radius-full);
 }
 
+/* 負責人多選下拉（新增表單與詳情面板共用） */
+.assignee-picker {
+  position: relative;
+}
+
+.assignee-picker-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--text-main);
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.assignee-picker-toggle:hover,
+.assignee-picker.open .assignee-picker-toggle {
+  border-color: var(--primary-500);
+}
+
+.assignee-picker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assignee-picker-label.is-placeholder {
+  color: var(--text-muted);
+}
+
+.assignee-picker-caret {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--text-light);
+  transition: transform var(--transition-fast);
+}
+
+.assignee-picker.open .assignee-picker-caret {
+  transform: rotate(180deg);
+}
+
+.assignee-picker-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 220px;
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 50;
+  padding: 0.35rem;
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.assignee-picker-panel[hidden] {
+  display: none;
+}
+
+.assignee-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.86rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.assignee-picker-option:hover {
+  background: var(--primary-50);
+}
+
+.assignee-picker-option input {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  accent-color: var(--primary-500);
+}
+
+.assignee-picker-option small {
+  color: var(--text-light);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assignee-picker-empty {
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+
 .assignee-avatar-mini {
   width: 20px;
   height: 20px;

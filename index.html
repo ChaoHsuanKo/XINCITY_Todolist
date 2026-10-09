@@ -15,7 +15,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <!-- 樣式表 (含防快取版本號) -->
-  <link rel="stylesheet" href="style.css?v=20261009_01">
+  <link rel="stylesheet" href="style.css?v=20261009_02">
 </head>
 <body>
   <!-- 應用程式主容器 -->
@@ -161,10 +161,8 @@
               </div>
 
               <div class="option-item">
-                <label for="select-todo-assignee" class="sr-only">指派負責人</label>
-                <select id="select-todo-assignee" class="form-select select-compact">
-                  <option value="">指派負責人...</option>
-                </select>
+                <!-- 負責人多選：由 app.js 的 AssigneePicker 產生勾選清單 -->
+                <div id="picker-todo-assignee" class="assignee-picker" data-placeholder="指派負責人..."></div>
               </div>
 
               <div class="option-item">
@@ -447,8 +445,8 @@
               <select id="detail-todo-category" class="form-select"></select>
             </div>
             <div class="form-group">
-              <label for="detail-todo-assignee" class="form-label">負責人</label>
-              <select id="detail-todo-assignee" class="form-select"></select>
+              <span class="form-label">負責人（可多選）</span>
+              <div id="detail-todo-assignee" class="assignee-picker" data-placeholder="未指派"></div>
             </div>
             <div class="form-group">
               <label for="detail-todo-start" class="form-label">開始日期</label>
@@ -514,6 +512,6 @@
   <div class="toast-container" id="toast-container"></div>
 
   <!-- 應用程式主邏輯 (含防快取版本號) -->
-  <script src="app.js?v=20261009_01"></script>
+  <script src="app.js?v=20261009_02"></script>
 </body>
 </html>

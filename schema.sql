@@ -172,3 +172,56 @@ $$;
 -- 未設定時前端與通知信以建立日期為準。
 -- ==========================================
 ALTER TABLE public.todos ADD COLUMN IF NOT EXISTS start_date DATE;
+
+-- ==========================================
+-- 14. 多位負責人 (2026-10-09 新增)
+-- 任務可指派給多位負責人；新增或加入負責人時，僅寄信給「新加入」的負責人。
+-- assigned_email 保留為第一位負責人，相容舊資料與舊版前端。
+-- ⚠️ 執行前請將下方 <WEBHOOK_SECRET> 替換為與 Edge Function Secrets 相同的密鑰
+-- ⚠️ 請先執行本節並部署新版 notify-assignee，再推送前端程式
+-- ==========================================
+
+-- 14-1. 負責人清單欄位，並將既有的單一負責人搬入
+ALTER TABLE public.todos ADD COLUMN IF NOT EXISTS assigned_emails TEXT[] NOT NULL DEFAULT '{}';
+UPDATE public.todos
+  SET assigned_emails = ARRAY[assigned_email]
+  WHERE assigned_email IS NOT NULL AND cardinality(assigned_emails) = 0;
+
+-- 14-2. 觸發器函式：找出新加入的負責人，連同任務 ID 一起交給 Edge Function 寄信
+CREATE OR REPLACE FUNCTION public.notify_task_assignment()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  new_assignees TEXT[];
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    SELECT coalesce(array_agg(DISTINCT lower(e)), '{}') INTO new_assignees
+    FROM unnest(NEW.assigned_emails) AS e;
+  ELSE
+    SELECT coalesce(array_agg(DISTINCT lower(e)), '{}') INTO new_assignees
+    FROM unnest(NEW.assigned_emails) AS e
+    WHERE lower(e) <> ALL (SELECT lower(o) FROM unnest(OLD.assigned_emails) AS o);
+  END IF;
+
+  -- 沒有新加入的負責人（例如只移除負責人或改其他欄位）則不寄信
+  IF cardinality(new_assignees) = 0 THEN
+    RETURN NEW;
+  END IF;
+
+  PERFORM net.http_post(
+    url := 'https://dofkukshtqmtdxiomzfn.supabase.co/functions/v1/notify-assignee',
+    body := jsonb_build_object('todo_id', NEW.id, 'new_assignees', to_jsonb(new_assignees)),
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-webhook-secret', '<WEBHOOK_SECRET>'
+    ),
+    timeout_milliseconds := 10000
+  );
+  RETURN NEW;
+END;
+$$;
+
+-- 14-3. 觸發器改為監聽 assigned_emails（不再監聽 assigned_email，避免重複寄信）
+DROP TRIGGER IF EXISTS on_todo_assigned ON public.todos;
+CREATE TRIGGER on_todo_assigned
+  AFTER INSERT OR UPDATE OF assigned_emails ON public.todos
+  FOR EACH ROW EXECUTE FUNCTION public.notify_task_assignment();

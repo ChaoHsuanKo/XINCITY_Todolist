@@ -34,7 +34,7 @@ const INITIAL_LOCAL_STATE = {
       id: 't1',
       title: '繳交第三季專案報告',
       category_id: 'c1',
-      assigned_email: 'chaohsuan.ke@gmail.com',
+      assigned_emails: ['chaohsuan.ke@gmail.com'],
       due_date: new Date(Date.now() + 86400000 * 2).toISOString(),
       is_completed: false,
       created_by: 'chaohsuan.ke@gmail.com',
@@ -44,7 +44,7 @@ const INITIAL_LOCAL_STATE = {
       id: 't2',
       title: '客戶簡報準備與架構檢視',
       category_id: 'c1',
-      assigned_email: 'sarah@example.com',
+      assigned_emails: ['sarah@example.com', 'chaohsuan.ke@gmail.com'],
       due_date: new Date(Date.now() + 86400000 * 3).toISOString(),
       is_completed: false,
       created_by: 'chaohsuan.ke@gmail.com',
@@ -54,7 +54,7 @@ const INITIAL_LOCAL_STATE = {
       id: 't3',
       title: '團隊週會討論與時程同步',
       category_id: 'c3',
-      assigned_email: 'chaohsuan.ke@gmail.com',
+      assigned_emails: ['chaohsuan.ke@gmail.com'],
       due_date: new Date(Date.now() + 3600000 * 3).toISOString(),
       is_completed: false,
       created_by: 'chaohsuan.ke@gmail.com',
@@ -64,7 +64,7 @@ const INITIAL_LOCAL_STATE = {
       id: 't4',
       title: '確認伺服器備份與環境變數設定',
       category_id: 'c2',
-      assigned_email: 'chaohsuan.ke@gmail.com',
+      assigned_emails: ['chaohsuan.ke@gmail.com'],
       due_date: new Date(Date.now() - 86400000).toISOString(),
       is_completed: true,
       created_by: 'chaohsuan.ke@gmail.com',
@@ -143,7 +143,7 @@ function initDOM() {
     formCreateTodo: document.getElementById('form-create-todo'),
     inputTodoTitle: document.getElementById('input-todo-title'),
     selectTodoCategory: document.getElementById('select-todo-category'),
-    selectTodoAssignee: document.getElementById('select-todo-assignee'),
+    pickerTodoAssignee: document.getElementById('picker-todo-assignee'),
     inputTodoStart: document.getElementById('input-todo-start'),
     inputTodoDue: document.getElementById('input-todo-due'),
     currentCategoryIndicator: document.getElementById('current-category-indicator'),
@@ -842,15 +842,107 @@ function openEditCategoryModal(cat) {
   openModal('modal-edit-category');
 }
 
-// 更新指派負責人下拉選單
+// 取得任務的負責人 Email 清單（相容舊資料：僅有單一 assigned_email 時轉為陣列）
+function getTodoAssignees(todo) {
+  if (Array.isArray(todo.assigned_emails) && todo.assigned_emails.length) return todo.assigned_emails;
+  return todo.assigned_email ? [todo.assigned_email] : [];
+}
+
+// 比較兩份負責人清單是否相同（不分大小寫與順序）
+function sameAssignees(a, b) {
+  const norm = list => list.map(e => String(e).toLowerCase()).sort().join(',');
+  return norm(a) === norm(b);
+}
+
+// 負責人多選元件：按鈕顯示已選名單，展開後以勾選框選擇白名單成員
+class AssigneePicker {
+  constructor(root) {
+    this.root = root;
+    this.placeholder = root.dataset.placeholder || '指派負責人...';
+    this.selected = [];
+    root.innerHTML = `
+      <button type="button" class="assignee-picker-toggle" aria-haspopup="listbox" aria-expanded="false">
+        <span class="assignee-picker-label"></span>
+        <span class="assignee-picker-caret">▼</span>
+      </button>
+      <div class="assignee-picker-panel" role="listbox" aria-multiselectable="true" hidden></div>`;
+    this.toggleBtn = root.querySelector('.assignee-picker-toggle');
+    this.labelEl = root.querySelector('.assignee-picker-label');
+    this.panel = root.querySelector('.assignee-picker-panel');
+
+    this.toggleBtn.addEventListener('click', () => this.setOpen(this.panel.hidden));
+    this.panel.addEventListener('change', (e) => {
+      const email = e.target.value;
+      this.selected = e.target.checked
+        ? [...this.selected, email]
+        : this.selected.filter(x => x !== email);
+      this.renderLabel();
+    });
+    // 點擊外部或按 Esc 收合
+    document.addEventListener('click', (e) => {
+      if (!root.contains(e.target)) this.setOpen(false);
+    });
+    root.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.panel.hidden) {
+        e.stopPropagation();
+        this.setOpen(false);
+        this.toggleBtn.focus();
+      }
+    });
+    this.renderOptions();
+  }
+
+  setOpen(open) {
+    this.panel.hidden = !open;
+    this.root.classList.toggle('open', open);
+    this.toggleBtn.setAttribute('aria-expanded', String(open));
+  }
+
+  // 依白名單重建選項（保留仍存在的已選成員）
+  renderOptions() {
+    const members = appState.whitelist || [];
+    this.selected = this.selected.filter(email => members.some(u => u.email === email));
+    this.panel.innerHTML = members.length
+      ? members.map(u => `
+        <label class="assignee-picker-option">
+          <input type="checkbox" value="${escapeHtml(u.email)}" ${this.selected.includes(u.email) ? 'checked' : ''}>
+          <span>${escapeHtml(u.display_name || u.email)}</span>
+          <small>${escapeHtml(u.email)}</small>
+        </label>`).join('')
+      : '<div class="assignee-picker-empty">尚無成員</div>';
+    this.renderLabel();
+  }
+
+  renderLabel() {
+    const names = this.selected.map(email => {
+      const user = appState.whitelist.find(u => u.email === email);
+      return user ? (user.display_name || user.email) : email;
+    });
+    this.labelEl.textContent = names.length ? names.join('、') : this.placeholder;
+    this.labelEl.classList.toggle('is-placeholder', !names.length);
+    this.toggleBtn.title = names.join('、');
+  }
+
+  getValue() {
+    return [...this.selected];
+  }
+
+  setValue(emails) {
+    // 白名單 Email 大小寫可能與任務資料不同，統一對應回白名單的寫法
+    this.selected = (emails || [])
+      .map(email => appState.whitelist.find(u => u.email.toLowerCase() === String(email).toLowerCase())?.email)
+      .filter((email, i, arr) => email && arr.indexOf(email) === i);
+    this.renderOptions();
+  }
+}
+
+let createAssigneePicker = null;
+let detailAssigneePicker = null;
+
+// 更新指派負責人選單（白名單變動時重建選項）
 function updateAssigneeDropdown() {
-  DOM.selectTodoAssignee.innerHTML = '<option value="">指派負責人...</option>';
-  appState.whitelist.forEach(user => {
-    const opt = document.createElement('option');
-    opt.value = user.email;
-    opt.textContent = `${user.display_name} (${user.email})`;
-    DOM.selectTodoAssignee.appendChild(opt);
-  });
+  if (!createAssigneePicker) createAssigneePicker = new AssigneePicker(DOM.pickerTodoAssignee);
+  createAssigneePicker.renderOptions();
 }
 
 // 格式化到期時間顯示與逾期計算
@@ -903,8 +995,11 @@ function renderTodoList() {
     list = list.filter(t => {
       const matchTitle = (t.title || '').toLowerCase().includes(query)
         || (t.description || '').toLowerCase().includes(query);
-      const assignee = appState.whitelist.find(u => u.email === t.assigned_email);
-      const matchAssignee = assignee && ((assignee.display_name || '').toLowerCase().includes(query) || (assignee.email || '').toLowerCase().includes(query));
+      const matchAssignee = getTodoAssignees(t).some(email => {
+        const assignee = appState.whitelist.find(u => u.email === email);
+        return email.toLowerCase().includes(query)
+          || (assignee && (assignee.display_name || '').toLowerCase().includes(query));
+      });
       return matchTitle || matchAssignee;
     });
   }
@@ -938,8 +1033,9 @@ function renderTodoList() {
         const catB = appState.categories.find(c => c.id === b.category_id)?.name || '';
         return catA.localeCompare(catB, 'zh-TW');
       case 'assignee':
-        const nameA = appState.whitelist.find(u => u.email === a.assigned_email)?.display_name || '';
-        const nameB = appState.whitelist.find(u => u.email === b.assigned_email)?.display_name || '';
+        // 多位負責人時以第一位排序
+        const nameA = appState.whitelist.find(u => u.email === getTodoAssignees(a)[0])?.display_name || '';
+        const nameB = appState.whitelist.find(u => u.email === getTodoAssignees(b)[0])?.display_name || '';
         return nameA.localeCompare(nameB, 'zh-TW');
       case 'created_desc':
       default:
@@ -981,15 +1077,17 @@ function renderTodoList() {
       </span>
     ` : '';
 
-    // 負責人資訊
-    const assignee = appState.whitelist.find(u => u.email === todo.assigned_email);
-    const assigneeName = assignee ? (assignee.display_name || assignee.email.split('@')[0] || '成員') : '';
-    const assigneeHtml = assignee ? `
+    // 負責人資訊（可多位，每位一個徽章）
+    const assigneeHtml = getTodoAssignees(todo).map(email => {
+      const assignee = appState.whitelist.find(u => u.email === email);
+      if (!assignee) return '';
+      const assigneeName = assignee.display_name || assignee.email.split('@')[0] || '成員';
+      return `
       <span class="assignee-badge" title="負責人: ${escapeHtml(assigneeName)} (${escapeHtml(assignee.email || '')})">
         <span class="assignee-avatar-mini">${escapeHtml(assigneeName.charAt(0).toUpperCase())}</span>
         <span>${escapeHtml(assigneeName)}</span>
-      </span>
-    ` : '';
+      </span>`;
+    }).join('');
 
     // 截止日期資訊
     const dueInfo = formatDueDate(todo.due_date);
@@ -1301,7 +1399,7 @@ function bindEvents() {
     if (!title) return;
 
     const categoryId = DOM.selectTodoCategory.value || null;
-    const assignedEmail = DOM.selectTodoAssignee.value || null;
+    const assignedEmails = createAssigneePicker ? createAssigneePicker.getValue() : [];
     // datetime-local 值不含時區，需轉為 ISO 字串，否則資料庫會以 UTC 解讀而差 8 小時
     const dueDate = localInputToISO(DOM.inputTodoDue.value);
     const startDate = DOM.inputTodoStart.value || todayDateString();
@@ -1310,8 +1408,9 @@ function bindEvents() {
       await DataService.addTodo({
         title,
         category_id: categoryId,
-        assigned_email: assignedEmail,
-        assigned_by: assignedEmail ? appState.currentUser.email : null, // 指派者，供 Email 通知使用
+        assigned_emails: assignedEmails,
+        assigned_email: assignedEmails[0] || null, // 保留第一位負責人，相容舊欄位
+        assigned_by: assignedEmails.length ? appState.currentUser.email : null, // 指派者，供 Email 通知使用
         start_date: startDate,
         due_date: dueDate,
         is_completed: false,
@@ -1325,7 +1424,12 @@ function bindEvents() {
       renderCategories();
       showToast('待辦事項已新增！', 'success');
     } catch (err) {
-      showToast('新增待辦失敗', 'error');
+      console.error('[Todo] 新增任務失敗:', err);
+      if (/assigned_emails/.test(String(err.message || ''))) {
+        showToast('資料庫缺少新欄位，請先於 Supabase 執行 schema.sql 第 14 節升級指令', 'error');
+      } else {
+        showToast('新增待辦失敗', 'error');
+      }
     }
   });
 
@@ -1684,20 +1788,14 @@ function fillTodoDetailForm(todo) {
     catSelect.appendChild(opt);
   });
 
-  // 負責人下拉選單
-  const assigneeSelect = document.getElementById('detail-todo-assignee');
-  assigneeSelect.innerHTML = '<option value="">未指派</option>';
-  appState.whitelist.forEach(user => {
-    const opt = document.createElement('option');
-    opt.value = user.email;
-    opt.textContent = `${user.display_name} (${user.email})`;
-    assigneeSelect.appendChild(opt);
-  });
+  // 負責人多選
+  if (!detailAssigneePicker) detailAssigneePicker = new AssigneePicker(document.getElementById('detail-todo-assignee'));
+  detailAssigneePicker.setOpen(false);
 
   document.getElementById('detail-todo-title').value = todo.title || '';
   document.getElementById('detail-todo-description').value = todo.description || '';
   catSelect.value = todo.category_id || '';
-  assigneeSelect.value = todo.assigned_email || '';
+  detailAssigneePicker.setValue(getTodoAssignees(todo));
   document.getElementById('detail-todo-start').value = getTodoStartDate(todo);
   document.getElementById('detail-todo-due').value = isoToLocalInput(todo.due_date);
   document.getElementById('detail-todo-priority').value = PRIORITY_OPTIONS[todo.priority] ? todo.priority : 'normal';
@@ -1829,16 +1927,18 @@ window.handleTodoDetailSubmit = async function(e) {
     title,
     description: document.getElementById('detail-todo-description').value.trim() || null,
     category_id: document.getElementById('detail-todo-category').value || null,
-    assigned_email: document.getElementById('detail-todo-assignee').value || null,
     start_date: startDate,
     due_date: localInputToISO(document.getElementById('detail-todo-due').value),
     priority: document.getElementById('detail-todo-priority').value || 'normal',
     subtasks: todoDetailState.subtasks,
     is_completed: isCompleted
   };
-  // 負責人變更時記錄指派者（資料庫觸發器據此寄送 Email 通知給新負責人）
-  if ((updates.assigned_email || null) !== (original.assigned_email || null)) {
-    updates.assigned_by = updates.assigned_email ? appState.currentUser.email : null;
+  // 負責人變更時記錄指派者（資料庫觸發器據此寄送 Email 通知給新加入的負責人）
+  const assignedEmails = detailAssigneePicker.getValue();
+  if (!sameAssignees(assignedEmails, getTodoAssignees(original))) {
+    updates.assigned_emails = assignedEmails;
+    updates.assigned_email = assignedEmails[0] || null; // 保留第一位負責人，相容舊欄位
+    updates.assigned_by = assignedEmails.length ? appState.currentUser.email : null;
   }
   // 完成時間：取消完成則清空；已完成則依面板上的完成日期記錄（可補登實際完成日）
   if (!isCompleted) {
@@ -1863,7 +1963,9 @@ window.handleTodoDetailSubmit = async function(e) {
     console.error('[TodoDetail] 更新任務失敗:', err);
     // 資料庫尚未執行升級腳本時，欄位不存在會導致更新失敗
     const msg = String(err.message || '');
-    if (/description|priority|subtasks/.test(msg)) {
+    if (/assigned_emails/.test(msg)) {
+      showToast('資料庫缺少新欄位，請先於 Supabase 執行 schema.sql 第 14 節升級指令', 'error');
+    } else if (/description|priority|subtasks/.test(msg)) {
       showToast('資料庫缺少新欄位，請先於 Supabase 執行 schema.sql 第 9 節升級指令', 'error');
     } else {
       showToast('更新任務失敗，請檢查網路連線', 'error');
