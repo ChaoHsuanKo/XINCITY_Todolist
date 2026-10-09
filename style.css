@@ -1198,6 +1198,32 @@ input:checked + .slider:before {
   accent-color: var(--success);
 }
 
+/* 詳情面板：完成狀態與完成日期（可補登實際完成日） */
+.detail-complete-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+}
+
+.detail-completed-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.detail-completed-date[hidden] {
+  display: none;
+}
+
+.detail-completed-date .form-input {
+  width: auto;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+
 .detail-meta {
   margin-top: 0.75rem;
   font-size: 0.78rem;

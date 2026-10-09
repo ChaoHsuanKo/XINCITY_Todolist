@@ -102,7 +102,7 @@ const appState = {
   selectedCategory: 'all',     // 'all' 或分類 ID
   selectedStatus: 'all',       // 'all', 'active', 'completed'
   hideCompleted: false,        // 是否隱藏已完成事項
-  sortBy: 'created_desc',      // 'created_desc', 'created_asc', 'due_asc', 'priority', 'category', 'assignee'
+  sortBy: 'created_desc',      // 'created_desc', 'created_asc', 'start_asc', 'completed_desc', 'due_asc', 'priority', 'category', 'assignee'
   searchQuery: ''              // 關鍵字搜尋
 };
 
@@ -916,6 +916,13 @@ function renderTodoList() {
         return new Date(a.created_at) - new Date(b.created_at);
       case 'start_asc':
         return getTodoStartDate(a).localeCompare(getTodoStartDate(b));
+      case 'completed_desc': {
+        // 已完成且有完成時間者依完成時間新到舊，其餘（未完成或無紀錄）排在後面
+        const timeA = a.is_completed && a.completed_at ? new Date(a.completed_at).getTime() : -Infinity;
+        const timeB = b.is_completed && b.completed_at ? new Date(b.completed_at).getTime() : -Infinity;
+        if (timeA === timeB) return 0;
+        return timeB > timeA ? 1 : -1;
+      }
       case 'due_asc':
         if (!a.due_date && !b.due_date) return 0;
         if (!a.due_date) return 1;
@@ -1355,6 +1362,8 @@ function bindEvents() {
   if (formTodoDetail) {
     formTodoDetail.addEventListener('input', () => { todoDetailState.dirty = true; });
     formTodoDetail.addEventListener('change', () => { todoDetailState.dirty = true; });
+    // 勾選／取消完成時同步顯示完成日期欄位
+    document.getElementById('detail-todo-completed').addEventListener('change', syncDetailCompletedDate);
   }
 
   // 子任務輸入框按 Enter：新增子任務而非送出整個表單
@@ -1693,6 +1702,9 @@ function fillTodoDetailForm(todo) {
   document.getElementById('detail-todo-due').value = isoToLocalInput(todo.due_date);
   document.getElementById('detail-todo-priority').value = PRIORITY_OPTIONS[todo.priority] ? todo.priority : 'normal';
   document.getElementById('detail-todo-completed').checked = !!todo.is_completed;
+  document.getElementById('detail-todo-completed-date').value =
+    todo.is_completed && todo.completed_at ? isoToLocalInput(todo.completed_at).slice(0, 10) : '';
+  syncDetailCompletedDate();
 
   // 子任務草稿（深拷貝，取消時不影響原資料）
   todoDetailState.subtasks = (Array.isArray(todo.subtasks) ? todo.subtasks : []).map(s => ({ ...s }));
@@ -1708,6 +1720,27 @@ function fillTodoDetailForm(todo) {
   document.getElementById('detail-todo-meta').textContent = metaText;
 
   todoDetailState.dirty = false;
+}
+
+// 詳情面板：勾選完成時顯示完成日期欄位（未填時預設今天），取消勾選則隱藏
+function syncDetailCompletedDate() {
+  const isCompleted = document.getElementById('detail-todo-completed').checked;
+  const dateInput = document.getElementById('detail-todo-completed-date');
+  document.getElementById('detail-completed-date-wrap').hidden = !isCompleted;
+  if (isCompleted && !dateInput.value) dateInput.value = todayDateString();
+  dateInput.max = todayDateString();
+}
+
+// 將詳情面板選定的完成日期換算為 completed_at：
+// 日期未變沿用原時間、選今天記錄當下時間、補登過去日期則記為該日 00:00（本地時間）
+function resolveCompletedAt(original, dateStr) {
+  if (!dateStr) return new Date().toISOString();
+  if (original.is_completed && original.completed_at
+      && isoToLocalInput(original.completed_at).slice(0, 10) === dateStr) {
+    return original.completed_at;
+  }
+  if (dateStr === todayDateString()) return new Date().toISOString();
+  return new Date(`${dateStr}T00:00`).toISOString();
 }
 
 // 渲染子任務清單
@@ -1780,12 +1813,24 @@ window.handleTodoDetailSubmit = async function(e) {
   }
 
   const isCompleted = document.getElementById('detail-todo-completed').checked;
+  const completedDate = document.getElementById('detail-todo-completed-date').value;
+  const startDate = document.getElementById('detail-todo-start').value || getTodoStartDate(original);
+  if (isCompleted && completedDate) {
+    if (completedDate < startDate) {
+      showToast('完成日期不可早於開始日期！', 'error');
+      return;
+    }
+    if (completedDate > todayDateString()) {
+      showToast('完成日期不可晚於今天！', 'error');
+      return;
+    }
+  }
   const updates = {
     title,
     description: document.getElementById('detail-todo-description').value.trim() || null,
     category_id: document.getElementById('detail-todo-category').value || null,
     assigned_email: document.getElementById('detail-todo-assignee').value || null,
-    start_date: document.getElementById('detail-todo-start').value || getTodoStartDate(original),
+    start_date: startDate,
     due_date: localInputToISO(document.getElementById('detail-todo-due').value),
     priority: document.getElementById('detail-todo-priority').value || 'normal',
     subtasks: todoDetailState.subtasks,
@@ -1795,9 +1840,12 @@ window.handleTodoDetailSubmit = async function(e) {
   if ((updates.assigned_email || null) !== (original.assigned_email || null)) {
     updates.assigned_by = updates.assigned_email ? appState.currentUser.email : null;
   }
-  // 完成狀態有變動時才更新完成時間
-  if (isCompleted !== !!original.is_completed) {
-    updates.completed_at = isCompleted ? new Date().toISOString() : null;
+  // 完成時間：取消完成則清空；已完成則依面板上的完成日期記錄（可補登實際完成日）
+  if (!isCompleted) {
+    if (original.is_completed) updates.completed_at = null;
+  } else {
+    const completedAt = resolveCompletedAt(original, completedDate);
+    if (completedAt !== original.completed_at) updates.completed_at = completedAt;
   }
 
   const saveBtn = document.getElementById('btn-save-todo-detail');
@@ -1926,8 +1974,9 @@ function formatTodoAge(todo) {
       return { text: '✅ 已結案', className: 'age-closed', title: `開始日期 ${startDate}（無完成時間紀錄）` };
     }
     const days = Math.max(0, daysBetweenDates(startDate, completedDate));
+    const [, cm, cd] = completedDate.split('-').map(Number);
     return {
-      text: days === 0 ? '✅ 當天結案' : `✅ 經 ${days} 天結案`,
+      text: days === 0 ? `✅ ${cm}/${cd} 完成 ・ 當天結案` : `✅ ${cm}/${cd} 完成 ・ 經 ${days} 天`,
       className: 'age-closed',
       title: `開始 ${startDate} → 結案 ${completedDate}`
     };

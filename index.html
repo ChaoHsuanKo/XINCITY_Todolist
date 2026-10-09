@@ -15,7 +15,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <!-- 樣式表 (含防快取版本號) -->
-  <link rel="stylesheet" href="style.css?v=20261003_04">
+  <link rel="stylesheet" href="style.css?v=20261009_01">
 </head>
 <body>
   <!-- 應用程式主容器 -->
@@ -125,6 +125,7 @@
               <option value="created_desc">建立日期（新 → 舊）</option>
               <option value="created_asc">建立日期（舊 → 新）</option>
               <option value="start_asc">開始日期（最早提出優先）</option>
+              <option value="completed_desc">完成日期（最近完成優先）</option>
               <option value="due_asc">截止時間（近期優先）</option>
               <option value="priority">優先度（高到低）</option>
               <option value="category">任務類別</option>
@@ -484,10 +485,16 @@
             </div>
           </div>
 
-          <label class="detail-complete-toggle">
-            <input type="checkbox" id="detail-todo-completed">
-            <span>標記為已完成</span>
-          </label>
+          <div class="detail-complete-row">
+            <label class="detail-complete-toggle">
+              <input type="checkbox" id="detail-todo-completed">
+              <span>標記為已完成</span>
+            </label>
+            <label class="detail-completed-date" id="detail-completed-date-wrap" hidden>
+              <span>完成日期</span>
+              <input type="date" id="detail-todo-completed-date" class="form-input">
+            </label>
+          </div>
 
           <p class="detail-meta" id="detail-todo-meta"></p>
 
@@ -507,6 +514,6 @@
   <div class="toast-container" id="toast-container"></div>
 
   <!-- 應用程式主邏輯 (含防快取版本號) -->
-  <script src="app.js?v=20261003_04"></script>
+  <script src="app.js?v=20261009_01"></script>
 </body>
 </html>
